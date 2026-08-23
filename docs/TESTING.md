@@ -1,4 +1,4 @@
-# Manual Test Matrix — 1.1.0-alpha.2
+# Manual Test Matrix - 1.1.0-alpha.2
 
 Use copies of files. Do not use important originals while testing alpha builds.
 

@@ -6,11 +6,11 @@ The current alpha is intentionally a small Zotero bootstrap plugin. The importer
 
 Main pieces:
 
-- `addon/bootstrap.js` — plugin lifecycle and locale registration
-- `src/folder-drop-importer.js` — UI registration, filesystem scan, collection creation, duplicate check, and attachment import
-- `addon/locale/` — Fluent menu labels
-- `addon/icons/` — theme-compatible SVG menu icons
-- `scripts/build.py` — dependency-free XPI packaging
+- `addon/bootstrap.js` - plugin lifecycle and locale registration
+- `src/folder-drop-importer.js` - UI registration, filesystem scan, collection creation, duplicate check, and attachment import
+- `addon/locale/` - Fluent menu labels
+- `addon/icons/` - theme-compatible SVG menu icons
+- `scripts/build.py` - dependency-free XPI packaging
 
 ## Why not refactor everything at once?
 

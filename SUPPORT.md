@@ -3,7 +3,7 @@
 ## Before opening an issue
 
 1. Confirm the problem still occurs with the latest release.
-2. Test with a small folder containing copies of 2–3 PDFs.
+2. Test with a small folder containing copies of 2-3 PDFs.
 3. Open **Tools → Developer → Error Console** in Zotero and capture the relevant error lines.
 4. If the problem is folder-specific, check whether the folder is local, OneDrive, Dropbox, a network drive, a junction/symlink, or contains cloud-only placeholders.
 

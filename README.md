@@ -2,28 +2,28 @@
 
 [![Latest Release](https://img.shields.io/github/v/release/suraj1kc/zotero-folder-drop-importer?include_prereleases&label=Release)](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/suraj1kc/zotero-folder-drop-importer/total?label=Downloads)](https://github.com/suraj1kc/zotero-folder-drop-importer/releases)
-[![Zotero](https://img.shields.io/badge/Zotero-8%20–%2010-red?logo=zotero)](https://www.zotero.org/)
+[![Zotero](https://img.shields.io/badge/Zotero-8%20-%2010-red?logo=zotero)](https://www.zotero.org/)
 [![License](https://img.shields.io/github/license/suraj1kc/zotero-folder-drop-importer)](LICENSE)
 
-Import entire folder hierarchies into Zotero collections — preserving your directory structure as nested collections and importing PDFs in one step.
+Import entire folder hierarchies into Zotero collections - preserving your directory structure as nested collections and importing PDFs in one step.
 
-> **Status:** `1.1.0-alpha.3` — test with copies of your files before using on a large library.
+> **Status:** `1.1.0-alpha.3` - test with copies of your files before using on a large library.
 
 ---
 
 ## 📥 Download & Install
 
-### Step 1 — Download the plugin file
+### Step 1 - Download the plugin file
 
 > **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.0-alpha.3.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0-alpha.3/Zotero-Folder-Drop-Importer-1.1.0-alpha.3.xpi)**
 
 This downloads a small `.xpi` file (≈10 KB). Save it somewhere you can find it (e.g. your Downloads folder).
 
-> **⚠️ Important — Firefox users:** Firefox will try to install the `.xpi` as a browser extension. **Right-click** the link above and choose **"Save Link As…"** instead.
+> **⚠️ Important - Firefox users:** Firefox will try to install the `.xpi` as a browser extension. **Right-click** the link above and choose **"Save Link As…"** instead.
 >
-> **Chrome / Edge users:** Your browser may warn that `.xpi` files "can harm your computer." Click **"Keep"** — it's a standard Zotero plugin file, not an executable.
+> **Chrome / Edge users:** Your browser may warn that `.xpi` files "can harm your computer." Click **"Keep"** - it's a standard Zotero plugin file, not an executable.
 
-### Step 2 — Install in Zotero
+### Step 2 - Install in Zotero
 
 1. Open **Zotero** on your computer.
 2. Go to **Tools → Plugins** (called "Add-ons" in some Zotero versions).
@@ -131,7 +131,7 @@ Folder Drop Importer is **100% offline** and performs explicit local imports onl
 - ✅ No network requests
 - ✅ Never moves or deletes source files
 
-Zotero plugins have broad access to Zotero and the local computer — install releases only from a repository or developer you trust.
+Zotero plugins have broad access to Zotero and the local computer - install releases only from a repository or developer you trust.
 
 ---
 
@@ -139,7 +139,7 @@ Zotero plugins have broad access to Zotero and the local computer — install re
 
 - Drag-and-drop uses the currently selected collection; dropping directly onto a specific collection row is planned.
 - Duplicate detection uses filename + size, not content-hash (SHA-256 planned for beta).
-- JavaScript codebase — a modular TypeScript refactor is planned before stable release.
+- JavaScript codebase - a modular TypeScript refactor is planned before stable release.
 
 ---
 
