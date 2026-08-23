@@ -1,12 +1,32 @@
-# Zotero Folder Drop Importer
+# 📂 Zotero Folder Drop Importer
 
-Import local folder hierarchies into Zotero collections by File menu, drag and drop, or collection right-click.
+[![Latest Release](https://img.shields.io/github/v/release/suraj1kc/zotero-folder-drop-importer?include_prereleases&label=Release)](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/suraj1kc/zotero-folder-drop-importer/total?label=Downloads)](https://github.com/suraj1kc/zotero-folder-drop-importer/releases)
+[![Zotero](https://img.shields.io/badge/Zotero-8%20–%2010-red?logo=zotero)](https://www.zotero.org/)
+[![License](https://img.shields.io/github/license/suraj1kc/zotero-folder-drop-importer)](LICENSE)
 
-> **Status:** `1.1.0-alpha.3` — test with copies of your files before using it on a large library.
+Import entire folder hierarchies into Zotero collections — preserving your directory structure as nested collections and importing PDFs in one step.
 
-## What it does
+> **Status:** `1.1.0-alpha.3` — test with copies of your files before using on a large library.
 
-A folder tree such as:
+---
+
+## 📥 Download & Install
+
+**[👉 Download Latest .xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/latest)**
+
+1. Download the `.xpi` file from the [Releases](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/latest) page.
+2. Open Zotero → **Tools → Plugins** (or **Add-ons**).
+3. Click the gear icon ⚙️ and choose **Install Add-on From File…**, or drag the `.xpi` directly into the Plugins window.
+4. Restart Zotero if prompted.
+
+> **⚠️ Firefox users:** If downloading with Firefox, **right-click** the `.xpi` link and choose **"Save Link As…"** — otherwise Firefox will try to install it as a browser extension.
+
+---
+
+## ✨ What It Does
+
+A folder tree like this:
 
 ```text
 Research/
@@ -17,10 +37,10 @@ Research/
     └── paper-c.pdf
 ```
 
-becomes:
+becomes this in Zotero:
 
 ```text
-Target Zotero Collection
+My Library
 └── Research
     ├── Transformers
     │   ├── paper-a
@@ -29,100 +49,117 @@ Target Zotero Collection
         └── paper-c
 ```
 
-## Current interaction
+Your folder structure is preserved as nested Zotero collections, and every PDF is imported as an attachment item.
 
-### File menu
+---
 
-Select exactly one Zotero collection, then use:
+## 🚀 How to Use
+
+### File Menu
+
+Select a Zotero collection, then use:
 
 **File → Import Folder…**
 
-The File-menu command intentionally has no custom icon.
+### Right-Click Context Menu
 
-### Collection/subcollection context menu
-
-Right-click a Zotero collection or subcollection and choose:
+Right-click any collection or subcollection and choose:
 
 **Import Folder Here…**
 
-This is the only in-app command that uses the import-folder SVG icon.
+### Drag and Drop
 
-### Drag and drop
+Select a Zotero collection, then drag one or more folders from your file manager onto Zotero. The plugin handles deduplication, nested roots, and prevents double-imports automatically.
 
-Select exactly one Zotero collection, then drag one or more folders from the operating-system file manager onto Zotero.
+### Stop an Import
 
-The alpha normalizes the top-level drop list, removes duplicate/nested roots, and prevents the same drop event from starting two imports.
+While an import is running, the progress panel shows **Stop** and **×** controls. **Stop** safely halts before the next file. **×** hides the panel while the import continues. Partial results are kept when stopped.
 
-## Opinionated defaults
+---
+
+## ⚙️ Opinionated Defaults
 
 There is intentionally **no Settings dialog** in this alpha. The plugin does one job with safe defaults:
 
-- Import PDFs only
-- Preserve the dropped root folder as a Zotero collection
-- Preserve nested folders as nested collections
-- Skip hidden files/folders
-- Skip inaccessible or vanished filesystem entries and continue
-- Reuse an existing same-named child collection instead of creating another one
-- Skip duplicate attachments using filename + file size
-- Copy files into Zotero managed storage
-- Never move or delete source files
-- No background watcher
-- No telemetry or analytics
-- No automatic metadata retrieval initiated by this plugin
+| Setting | Default |
+| :--- | :--- |
+| File types | PDFs only |
+| Hierarchy | Preserve folder structure as nested collections |
+| Hidden files | Skipped |
+| Inaccessible entries | Skipped (import continues) |
+| Duplicate detection | Filename + file size |
+| Existing collections | Reuse same-named child collections |
+| Source files | Never moved or deleted (copy only) |
+| Background watcher | None |
+| Telemetry | None |
+| Auto-metadata retrieval | None (use Zotero's built-in retrieval after import) |
 
-## Multi-folder protection
+---
 
-`1.1.0-alpha.3` adds several safeguards for multi-folder drops:
+## 🛡️ Multi-Folder Drop Protection
 
-- Prefer the privileged Gecko top-level drag objects when available
-- Canonicalize paths before processing
-- Remove nested roots when a parent root is already present
-- Deduplicate PDF jobs by full source path
-- Use a one-drop/one-import lock
-- Cache collections created/reused during the import
+`1.1.0-alpha.3` includes safeguards to prevent duplicate collection trees when dropping multiple folders:
 
-These safeguards are intended to prevent a drop of five folders from producing ten duplicate collection trees.
+- Prefers privileged Gecko top-level drag objects when available
+- Canonicalizes paths before processing
+- Removes nested roots when a parent root is already present
+- Deduplicates PDF jobs by full source path
+- One-drop / one-import locking
+- Caches collections created/reused during each import
 
-## Installation
+---
 
-1. Download the `.xpi` release.
-2. Open Zotero → **Tools → Plugins**.
-3. Choose **Install Add-on From File…** and select the XPI.
-4. Restart Zotero if requested.
+## 🔒 Privacy & Safety
 
-## Privacy and safety
+Folder Drop Importer is **100% offline** and performs explicit local imports only.
 
-Folder Drop Importer performs explicit local imports only. It does not run a folder watcher, upload files to a service, send telemetry, or delete/move source files.
+- ✅ No folder watcher
+- ✅ No file uploads
+- ✅ No telemetry or analytics
+- ✅ No network requests
+- ✅ Never moves or deletes source files
 
-Zotero plugins have broad access to Zotero and the local computer, so install releases only from a repository/developer you trust.
+Zotero plugins have broad access to Zotero and the local computer — install releases only from a repository or developer you trust.
 
-## Known alpha limitations
+---
 
-- Drag-and-drop still uses the currently selected collection; dropping directly onto a specific collection row is planned.
-- Duplicate detection is filename + size, not content-hash based yet.
-- Progress is a lightweight Zotero status overlay rather than a cancellable progress window.
-- The current code remains JavaScript while behavior stabilizes; a modular TypeScript refactor is planned before a stable release.
+## ⚠️ Known Alpha Limitations
 
-## Development
+- Drag-and-drop uses the currently selected collection; dropping directly onto a specific collection row is planned.
+- Duplicate detection uses filename + size, not content-hash (SHA-256 planned for beta).
+- JavaScript codebase — a modular TypeScript refactor is planned before stable release.
 
-Build locally:
+---
+
+## 🛠️ Development
 
 ```bash
-python scripts/build.py
+# Syntax check
+npm run check
+
+# Build .xpi
+npm run build
 ```
 
-Syntax check:
+Or manually:
 
 ```bash
 node --check src/folder-drop-importer.js
 node --check addon/bootstrap.js
+python scripts/build.py
 ```
 
-## License
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+- 🐛 [Report a Bug](https://github.com/suraj1kc/zotero-folder-drop-importer/issues/new?template=bug_report.yml)
+- 💡 [Request a Feature](https://github.com/suraj1kc/zotero-folder-drop-importer/issues/new?template=feature_request.yml)
+
+---
+
+## 📄 License
 
 MIT. See [LICENSE](LICENSE).
-
-
-### Stop an import
-
-While an import is running, the progress panel shows **Stop** and **×** controls. **Stop** safely stops before the next file (the file currently being copied is allowed to finish). **×** hides the progress panel while the import continues. Partial results are kept when an import is stopped.
