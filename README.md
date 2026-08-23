@@ -8,6 +8,8 @@
 Import entire folder hierarchies into Zotero collections - preserving your directory structure as nested collections and importing PDFs in one step.
 
 > **Status:** `1.1.0-alpha.3` - test with copies of your files before using on a large library.
+>
+> 📖 **Blog Post:** [Building Zotero Folder Drop Importer](https://surajkatwal.com.np/blog/building-zotero-folder-drop-importer/) - Read about the motivation, design decisions, and how it was built.
 
 ---
 
