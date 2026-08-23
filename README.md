@@ -174,6 +174,12 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ---
 
-## 📄 License
+## Acknowledgements
+
+Built with the assistance of Google Antigravity and OpenAI Codex.
+
+---
+
+## License
 
 MIT. See [LICENSE](LICENSE).
