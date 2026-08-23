@@ -13,14 +13,26 @@ Import entire folder hierarchies into Zotero collections — preserving your dir
 
 ## 📥 Download & Install
 
-**[👉 Download Latest .xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/latest)**
+### Step 1 — Download the plugin file
 
-1. Download the `.xpi` file from the [Releases](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/latest) page.
-2. Open Zotero → **Tools → Plugins** (or **Add-ons**).
-3. Click the gear icon ⚙️ and choose **Install Add-on From File…**, or drag the `.xpi` directly into the Plugins window.
-4. Restart Zotero if prompted.
+> **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.0-alpha.3.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0-alpha.3/Zotero-Folder-Drop-Importer-1.1.0-alpha.3.xpi)**
 
-> **⚠️ Firefox users:** If downloading with Firefox, **right-click** the `.xpi` link and choose **"Save Link As…"** — otherwise Firefox will try to install it as a browser extension.
+This downloads a small `.xpi` file (≈10 KB). Save it somewhere you can find it (e.g. your Downloads folder).
+
+> **⚠️ Important — Firefox users:** Firefox will try to install the `.xpi` as a browser extension. **Right-click** the link above and choose **"Save Link As…"** instead.
+>
+> **Chrome / Edge users:** Your browser may warn that `.xpi` files "can harm your computer." Click **"Keep"** — it's a standard Zotero plugin file, not an executable.
+
+### Step 2 — Install in Zotero
+
+1. Open **Zotero** on your computer.
+2. Go to **Tools → Plugins** (called "Add-ons" in some Zotero versions).
+3. Click the **gear icon ⚙️** in the top-right corner.
+4. Choose **Install Add-on From File…**
+5. Navigate to the `.xpi` file you just downloaded and select it.
+6. Restart Zotero if prompted.
+
+**That's it!** The plugin is now installed. No configuration needed.
 
 ---
 
