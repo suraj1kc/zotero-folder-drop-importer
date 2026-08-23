@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a reproducible problem with importing folders
+labels: [bug]
+body:
+  - type: input
+    id: zotero
+    attributes:
+      label: Zotero version
+      placeholder: 10.0.x
+    validations:
+      required: true
+  - type: input
+    id: plugin
+    attributes:
+      label: Plugin version
+      placeholder: 1.1.0-alpha.1
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11 / macOS / Ubuntu
+    validations:
+      required: true
+  - type: dropdown
+    id: source
+    attributes:
+      label: Source folder type
+      options:
+        - Local disk
+        - OneDrive
+        - Dropbox
+        - Network drive
+        - Other cloud/sync folder
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: method
+    attributes:
+      label: Import method
+      options:
+        - Right-click Import Folder Here
+        - Tools menu
+        - Drag and drop
+    validations:
+      required: true
+  - type: textarea
+    id: tree
+    attributes:
+      label: Minimal folder tree
+      render: text
+      placeholder: |
+        Research/
+        ├── A/paper1.pdf
+        └── B/paper2.pdf
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Zotero Error Console output
+      render: text

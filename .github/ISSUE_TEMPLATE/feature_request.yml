@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a focused improvement to Folder Drop Importer
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or workflow
+      description: What are you trying to do that is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: File-safety considerations
+      description: Could this move, delete, overwrite, or duplicate files?

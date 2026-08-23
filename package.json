@@ -1,0 +1,11 @@
+{
+  "name": "zotero-folder-drop-importer",
+  "version": "1.1.0-alpha.3",
+  "private": true,
+  "description": "Import local folder hierarchies into Zotero collections from File, drag and drop, or collection right-click.",
+  "license": "MIT",
+  "scripts": {
+    "check": "node --check src/folder-drop-importer.js && node --check addon/bootstrap.js",
+    "build": "python scripts/build.py"
+  }
+}

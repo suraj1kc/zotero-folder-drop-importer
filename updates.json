@@ -1,0 +1,18 @@
+{
+  "addons": {
+    "zotero-folder-drop-importer@open-source": {
+      "updates": [
+        {
+          "version": "1.1.0-alpha.3",
+          "update_link": "https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0-alpha.3/Zotero-Folder-Drop-Importer-1.1.0-alpha.3.xpi",
+          "applications": {
+            "zotero": {
+              "strict_min_version": "8.0",
+              "strict_max_version": "10.0.*"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

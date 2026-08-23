@@ -1,0 +1,20 @@
+{
+  "manifest_version": 2,
+  "name": "Zotero Folder Drop Importer",
+  "version": "1.1.0-alpha.3",
+  "description": "Import local folder hierarchies into Zotero collections from File, drag and drop, or a collection context menu.",
+  "author": "Zotero Folder Drop Importer contributors",
+  "homepage_url": "https://github.com/suraj1kc/zotero-folder-drop-importer",
+  "applications": {
+    "zotero": {
+      "id": "zotero-folder-drop-importer@open-source",
+      "strict_min_version": "8.0",
+      "strict_max_version": "10.0.*",
+      "update_url": "https://raw.githubusercontent.com/suraj1kc/zotero-folder-drop-importer/main/updates.json"
+    }
+  },
+  "icons": {
+    "48": "content/icons/import-folder.svg",
+    "96": "content/icons/import-folder.svg"
+  }
+}
