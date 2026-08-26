@@ -178,6 +178,9 @@ reporting a smaller total as a success. For a full per-path breakdown, enable
 # Syntax check
 npm run check
 
+# Import engine tests (real directories, injected filesystem faults)
+npm test
+
 # Build .xpi
 npm run build
 ```
@@ -187,6 +190,7 @@ Or manually:
 ```bash
 node --check src/folder-drop-importer.js
 node --check addon/bootstrap.js
+node test/import.test.js
 python scripts/build.py
 ```
 
@@ -203,7 +207,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## Acknowledgements
 
-Built with the assistance of Google Antigravity and OpenAI Codex.
+Built with the assistance of Google Antigravity, OpenAI Codex, and Claude Code.
 
 ---
 
