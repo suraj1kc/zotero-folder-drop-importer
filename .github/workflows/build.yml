@@ -22,7 +22,7 @@ jobs:
         run: npm test
       - name: Build XPI
         run: npm run build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: zotero-folder-drop-importer-xpi
           path: dist/*.xpi
