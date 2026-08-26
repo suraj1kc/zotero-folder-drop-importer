@@ -1,6 +1,22 @@
-# Manual Test Matrix - 1.1.0-alpha.2
+# Test Matrix - 1.1.0
 
-Use copies of files. Do not use important originals while testing alpha builds.
+## Automated
+
+```bash
+npm run check   # syntax
+npm test        # import engine against real directories with injected faults
+```
+
+`test/import.test.js` drives `src/folder-drop-importer.js` under a stubbed
+Zotero/Gecko environment (`test/harness.js`) and injects the faults that used to
+cause silent file loss: enumeration failing mid-folder, permanently unreadable
+folders, unreadable entries, directory junction loops, and transient import
+errors. Every case asserts that either all files arrive, or the shortfall is
+reported in the summary.
+
+## Manual
+
+Use copies of files. Keep a backup of your Zotero library before a large import.
 
 ## Installation / menus
 
@@ -38,7 +54,8 @@ Use copies of files. Do not use important originals while testing alpha builds.
 ## Default behavior
 
 - [ ] PDF files import
-- [ ] TXT/DOCX/other files are ignored
+- [ ] EPUB/DJVU/DOC/DOCX/ODT/RTF/MOBI/AZW3 files import
+- [ ] TXT/CSV/other unsupported files are ignored **and counted in the summary**
 - [ ] Root folder is preserved as a collection
 - [ ] Nested folders are preserved
 - [ ] Hidden entries are skipped
@@ -52,8 +69,23 @@ Use copies of files. Do not use important originals while testing alpha builds.
 - [ ] Read-only source file imports
 - [ ] Deeply nested folder does not crash
 
+## Import accounting
+
+- [ ] Summary total matches the file count on disk
+- [ ] Ignored unsupported files are listed with their extensions
+- [ ] Hidden folders are reported as skipped
+- [ ] A folder that cannot be read is reported, not silently omitted
+- [ ] Summary shows the "Show Items from Subcollections" tip when subcollections were created
+- [ ] "Unaccounted" never appears on a healthy import
+
+## Filesystem resilience (extra)
+
+- [ ] Directory junction pointing at an ancestor does not hang or crash
+- [ ] Import completes on a OneDrive folder with online-only files, and reports them
+
 ## Large import
 
-- [ ] 100 PDFs
-- [ ] 500 PDFs
+- [ ] 100 files
+- [ ] 500 files
+- [ ] 5000 files - progress panel stays responsive
 - [ ] Import summary counts are correct

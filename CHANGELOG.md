@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented here.
 
+## [1.1.0] - 2026-08-26
+
+First stable release. The headline change is that imports no longer lose files
+silently: previously a folder scan could abandon the remainder of a directory
+and still report "complete" with a total that looked correct.
+
+### Fixed
+- **Silently dropped files.** The directory scanner held a Gecko
+  `nsIDirectoryEnumerator` open across `await` boundaries (including the
+  database transaction that creates a collection). When enumeration failed
+  mid-folder, the loop broke and every remaining file in that folder was
+  discarded - the summary then honestly reported the shortened total, so a
+  40-file folder could import 34 and still say "complete". Each directory is
+  now read into an array in one synchronous pass, the enumerator is closed
+  immediately, and a partial read is retried once and merged by path.
+- **Unverified import counts.** `imported` was incremented whenever the import
+  call resolved. It now requires a real Zotero item, and if the item did not
+  land in the requested collection it is re-filed there.
+- **Invisible skips.** Unreadable entries (cloud placeholder files, permission
+  errors), unopenable folders, hidden folders and unsupported file types were
+  only written to the debug log. All of them are now counted and shown in the
+  final summary.
+- **Directory junction loops.** The scanner recursed with no visited-path
+  guard, so a junction or symlink pointing at an ancestor recursed until the
+  stack overflowed and took the whole import with it. The walk is now iterative
+  with a visited-path guard and a 64-level depth limit.
+- **Over-eager duplicate skip.** When an existing attachment's file could not
+  be resolved (a linked file, or a synced file not yet downloaded), the
+  filename match alone was treated as a duplicate and the new file was skipped.
+  Filename+size mode now imports when it cannot confirm the match.
+- **Merged sibling collections.** Collection names were matched
+  case-insensitively, so sibling folders differing only in case collapsed into
+  one collection. Exact-case matches are now preferred.
+
+### Added
+- Failed imports are retried once before being reported as failures.
+- E-book and document formats alongside PDF: `epub`, `djvu`, `mobi`, `azw3`,
+  `doc`, `docx`, `odt`, `rtf`.
+- The summary names the most common cause of "my files are missing": items in
+  subfolders go to subcollections, which Zotero's item list hides until
+  **View → Show Items from Subcollections** is enabled.
+- A machine-readable report line and a per-path problem list in the debug log.
+- Progress updates are throttled, so large imports are no longer slowed by UI
+  repainting on every file.
+
 ## 1.1.0-alpha.3
 
 - Fixed File/context menu commands disappearing after Zotero is closed and reopened by registering window UI from the main-window lifecycle hook.

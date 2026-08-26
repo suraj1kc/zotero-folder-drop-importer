@@ -2,6 +2,25 @@
  * Zotero Folder Drop Importer
  * Lightweight, explicit folder-hierarchy importer for Zotero 8-10.
  *
+ * 1.1.0:
+ * - Fixes silently dropped files: directory enumeration no longer holds an
+ *   nsIDirectoryEnumerator open across `await`, and a partial read is retried
+ *   and merged instead of abandoning the rest of the folder.
+ * - Counts only verified Zotero items as imported, and re-files an item if it
+ *   did not land in the requested collection.
+ * - Reports every skipped file: unsupported type, hidden folder, unreadable
+ *   entry, partial folder read, link loop, depth limit.
+ * - Retries failed imports once before giving up.
+ * - Walks the tree iteratively with a visited-path guard, so a directory
+ *   junction pointing at an ancestor can no longer recurse until the stack
+ *   overflows.
+ * - Stops treating an unresolvable existing attachment as a duplicate match.
+ * - Prefers exact-case collection names so sibling folders differing only in
+ *   case are no longer merged.
+ * - Imports common e-book and document formats alongside PDF.
+ * - Tells the user about View -> Show Items from Subcollections, the usual
+ *   reason imported files look missing.
+ *
  * 1.1.0-alpha.3:
  * - Moves the picker command to File -> Import Folder… (no File-menu icon).
  * - Removes Settings and uses safe opinionated defaults.
@@ -34,9 +53,14 @@ ZoteroFolderDropImporter = {
   cancelRequested: false,
   manuallyHiddenStatus: new WeakSet(),
 
-  // Deliberately opinionated defaults for the first public release.
+  // Deliberately opinionated defaults. Anything not in `extensions` is counted
+  // and reported as ignored rather than passed over in silence.
   defaults: Object.freeze({
-    extensions: ['pdf'],
+    extensions: [
+      'pdf',
+      'epub', 'djvu', 'mobi', 'azw3',
+      'doc', 'docx', 'odt', 'rtf'
+    ],
     createRootCollection: true,
     skipHidden: true,
     duplicateMode: 'name-size'
@@ -706,6 +730,45 @@ ZoteroFolderDropImporter = {
     await this.importRoots(win, [folder], collection);
   },
 
+  // Guards against directory junction/symlink loops and pathological trees.
+  limits: Object.freeze({
+    maxDepth: 64,
+    statusThrottleMs: 120
+  }),
+
+  newStats() {
+    return {
+      // Scan-time accounting. Every file the scanner touches lands in exactly
+      // one bucket, so "found" can be trusted against the folder on disk.
+      files: 0,
+      ignored: 0,
+      ignoredExtensions: new Map(),
+      unreadableEntries: 0,
+      unreadableDirs: 0,
+      partialDirs: 0,
+      hiddenSkipped: 0,
+      loopGuards: 0,
+      depthLimited: 0,
+      collectionsCreated: 0,
+      // Which collections files actually landed in, so the summary can warn
+      // about subcollection visibility even on a re-import that creates none.
+      targetCollectionID: null,
+      collectionsUsed: new Set(),
+      // Import-time accounting.
+      imported: 0,
+      skipped: 0,
+      failed: 0,
+      retried: 0,
+      collectionRepairs: 0,
+      problemPaths: []
+    };
+  },
+
+  noteProblem(stats, message) {
+    this.log(message);
+    if (stats.problemPaths.length < 500) stats.problemPaths.push(message);
+  },
+
   async importRoots(win, roots, parentCollection) {
     this.importing = true;
     this.cancelRequested = false;
@@ -713,9 +776,8 @@ ZoteroFolderDropImporter = {
     this.collectionCache = new Map();
     this.jobPathSet = new Set();
 
-    let imported = 0;
-    let skipped = 0;
-    let failed = 0;
+    const stats = this.newStats();
+    stats.targetCollectionID = parentCollection?.id ?? null;
     let found = 0;
 
     try {
@@ -723,77 +785,83 @@ ZoteroFolderDropImporter = {
       const jobs = [];
       this.showStatus(win, 'Folder Drop Importer\nScanning folder…', 0, { cancellable: true, forceShow: true });
 
-      for (const root of canonicalRoots) {
-        if (this.cancelRequested) break;
-        await this.collect(root, parentCollection, jobs, true);
-      }
-
+      await this.collectAll(canonicalRoots, parentCollection, jobs, stats, win);
       found = jobs.length;
 
       if (this.cancelRequested) {
         this.showStatus(
           win,
           `Folder Drop Importer stopped\nFound before stop: ${found}\nImported: 0\nPartial collections may remain.`,
-          8000,
+          9000,
           { forceShow: true }
         );
         return;
       }
 
       if (!found) {
-        this.showStatus(win, 'Folder Drop Importer complete\nNo PDF files found.', 6000, { forceShow: true });
+        this.showStatus(
+          win,
+          `Folder Drop Importer complete\nNo importable files found.${this.scanNotes(stats)}`,
+          9000,
+          { forceShow: true }
+        );
+        this.logReport(stats, found);
         return;
       }
+
+      const retryQueue = [];
+      let lastTick = 0;
 
       for (let i = 0; i < jobs.length; i++) {
         if (this.cancelRequested) break;
 
         const job = jobs[i];
+        const now = Date.now();
+        if (now - lastTick >= this.limits.statusThrottleMs || i === 0 || i === jobs.length - 1) {
+          lastTick = now;
+          this.showStatus(
+            win,
+            `Folder Drop Importer\nImporting ${i + 1} of ${jobs.length}\n${job.file.leafName}`,
+            0,
+            { cancellable: true }
+          );
+        }
+
+        const outcome = await this.importJob(job, stats);
+        if (outcome === 'retry') retryQueue.push(job);
+      }
+
+      // A single transient failure (a locked file, a cloud file still
+      // hydrating) should not silently cost the user an item.
+      if (retryQueue.length && !this.cancelRequested) {
         this.showStatus(
           win,
-          `Folder Drop Importer\nImporting ${i + 1} of ${jobs.length}\n${job.file.leafName}`,
+          `Folder Drop Importer\nRetrying ${retryQueue.length} file(s) that failed…`,
           0,
-          { cancellable: true }
+          { cancellable: true, forceShow: true }
         );
 
-        try {
-          if (await this.isDuplicate(job.file, job.collection)) {
-            skipped++;
-            continue;
+        for (const job of retryQueue) {
+          if (this.cancelRequested) break;
+          stats.retried++;
+          const outcome = await this.importJob(job, stats);
+          if (outcome === 'retry') {
+            stats.failed++;
+            this.noteProblem(stats, `Failed after retry: ${this.safePath(job.file)}`);
           }
-
-          // Zotero's attachment import is atomic from the plugin's point of
-          // view, so Stop takes effect between files rather than interrupting
-          // a single file halfway through.
-          await Zotero.Attachments.importFromFile({
-            file: job.file.path,
-            libraryID: job.collection.libraryID,
-            collections: [job.collection.id],
-            title: job.file.leafName.replace(/\.[^.]+$/, '')
-          });
-          imported++;
-        } catch (e) {
-          failed++;
-          this.log(`Failed to import ${job.file.path}: ${e}`);
-          Zotero.logError(e);
         }
       }
 
-      if (this.cancelRequested) {
-        this.showStatus(
-          win,
-          `Folder Drop Importer stopped\nFound: ${found}\nImported: ${imported}\nSkipped duplicates: ${skipped}\nFailed: ${failed}\nPartial results were kept.`,
-          9000,
-          { forceShow: true }
-        );
-      } else {
-        this.showStatus(
-          win,
-          `Folder Drop Importer complete\nFound: ${found}\nImported: ${imported}\nSkipped duplicates: ${skipped}\nFailed: ${failed}`,
-          8000,
-          { forceShow: true }
-        );
-      }
+      const settled = stats.imported + stats.skipped + stats.failed;
+      const unaccounted = this.cancelRequested ? 0 : Math.max(0, found - settled);
+
+      this.showStatus(
+        win,
+        this.buildSummary(stats, found, unaccounted),
+        this.cancelRequested ? 12000 : 14000,
+        { forceShow: true }
+      );
+      this.logReport(stats, found);
     } finally {
       this.importing = false;
       this.cancelRequested = false;
@@ -802,11 +870,131 @@ ZoteroFolderDropImporter = {
     }
   },
 
-  allowed(file) {
-    const m = file.leafName.match(/\.([^.]+)$/);
-    return !!m && this.defaults.extensions.includes(m[1].toLowerCase());
+  // Returns 'ok' | 'skipped' | 'retry'. Only a verified Zotero item counts as
+  // imported, so the reported number reflects what is actually in the library.
+  async importJob(job, stats) {
+    try {
+      if (await this.isDuplicate(job.file, job.collection)) {
+        stats.skipped++;
+        return 'skipped';
+      }
+
+      // Zotero's attachment import is atomic from the plugin's point of view,
+      // so Stop takes effect between files rather than interrupting a single
+      // file halfway through.
+      const item = await Zotero.Attachments.importFromFile({
+        file: job.file.path,
+        libraryID: job.collection.libraryID,
+        collections: [job.collection.id],
+        title: job.file.leafName.replace(/\.[^.]+$/, '')
+      });
+
+      if (!item?.id) {
+        this.noteProblem(stats, `Import returned no item: ${this.safePath(job.file)}`);
+        return 'retry';
+      }
+
+      // Defensive: if the item did not end up in the requested collection it
+      // would look "missing" to the user even though the import succeeded.
+      try {
+        const inTarget = (item.getCollections?.() || []).includes(job.collection.id);
+        if (!inTarget) {
+          item.addToCollection(job.collection.id);
+          await item.saveTx();
+          stats.collectionRepairs++;
+          this.noteProblem(stats, `Re-filed into target collection: ${this.safePath(job.file)}`);
+        }
+      } catch (e) {
+        this.noteProblem(stats, `Could not verify collection membership for ${this.safePath(job.file)}: ${e}`);
+      }
+
+      stats.imported++;
+      return 'ok';
+    } catch (e) {
+      this.noteProblem(stats, `Import error for ${this.safePath(job.file)}: ${e}`);
+      Zotero.logError(e);
+      return 'retry';
+    }
   },
 
+  buildSummary(stats, found, unaccounted) {
+    const lines = [];
+    lines.push(this.cancelRequested ? 'Folder Drop Importer stopped' : 'Folder Drop Importer complete');
+    lines.push(`Found: ${found} · Imported: ${stats.imported} · Duplicates: ${stats.skipped} · Failed: ${stats.failed}`);
+
+    if (stats.collectionsCreated) lines.push(`Collections created: ${stats.collectionsCreated}`);
+
+    // The most common "my files are missing" report is really this: items live in
+    // subcollections and Zotero's item list hides them by default. Warn whenever
+    // anything landed outside the collection the user was pointing at, even if
+    // this run reused existing collections and created none.
+    const usedNested = [...stats.collectionsUsed].some(id => id !== stats.targetCollectionID);
+    if (usedNested) {
+      lines.push('Files in subfolders go to subcollections - enable View -> Show Items from Subcollections to see them all.');
+    }
+
+    const notes = this.scanNotes(stats);
+    if (notes) lines.push(notes.trim());
+    if (unaccounted) lines.push(`Unaccounted: ${unaccounted} (please report this)`);
+    if (this.cancelRequested) lines.push('Partial results were kept.');
+
+    return lines.join('\n');
+  },
+
+  scanNotes(stats) {
+    const parts = [];
+
+    if (stats.ignored) {
+      const kinds = [...stats.ignoredExtensions.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([ext, count]) => `${count}x .${ext || '(no extension)'}`)
+        .join(', ');
+      parts.push(`Ignored ${stats.ignored} unsupported file(s): ${kinds}`);
+    }
+    if (stats.hiddenSkipped) parts.push(`Skipped ${stats.hiddenSkipped} hidden folder(s)`);
+    if (stats.partialDirs) parts.push(`${stats.partialDirs} folder(s) could only be read partially`);
+    if (stats.unreadableDirs) parts.push(`${stats.unreadableDirs} folder(s) could not be opened`);
+    if (stats.unreadableEntries) parts.push(`${stats.unreadableEntries} unreadable entry/entries (cloud placeholder or permissions)`);
+    if (stats.loopGuards) parts.push(`${stats.loopGuards} folder link loop(s) skipped`);
+    if (stats.depthLimited) parts.push(`${stats.depthLimited} folder(s) deeper than ${this.limits.maxDepth} levels skipped`);
+
+    if (!parts.length) return '';
+    return `\n${parts.join('\n')}\nDetails: Help -> Debug Output Logging -> View Output`;
+  },
+
+  logReport(stats, found) {
+    this.log(
+      `Report - found:${found} imported:${stats.imported} duplicates:${stats.skipped} ` +
+      `failed:${stats.failed} retried:${stats.retried} ignored:${stats.ignored} ` +
+      `collectionsCreated:${stats.collectionsCreated} collectionsUsed:${stats.collectionsUsed.size} ` +
+      `collectionRepairs:${stats.collectionRepairs} ` +
+      `partialDirs:${stats.partialDirs} unreadableDirs:${stats.unreadableDirs} ` +
+      `unreadableEntries:${stats.unreadableEntries} hiddenSkipped:${stats.hiddenSkipped} ` +
+      `loopGuards:${stats.loopGuards} depthLimited:${stats.depthLimited}`
+    );
+    for (const problem of stats.problemPaths) this.log(`  - ${problem}`);
+  },
+
+  allowed(file) {
+    const ext = this.extensionOf(file);
+    return !!ext && this.defaults.extensions.includes(ext);
+  },
+
+  extensionOf(file) {
+    let name = '';
+    try { name = file.leafName || ''; } catch (_) { return ''; }
+    const m = name.match(/\.([^.\\/]+)$/);
+    return m ? m[1].toLowerCase() : '';
+  },
+
+  safePath(file) {
+    try { return file?.path || file?.leafName || '<unknown path>'; } catch (_) { return '<unknown path>'; }
+  },
+
+  // Returns true/false normally, or null when the filesystem raised - callers
+  // must distinguish "definitely not a file" from "could not be inspected",
+  // otherwise unreadable entries vanish from the import without a trace.
   safeFileCall(file, operation, fallback = false) {
     try {
       if (!file) return fallback;
@@ -818,97 +1006,233 @@ ZoteroFolderDropImporter = {
         default: return fallback;
       }
     } catch (e) {
-      let path = '<unknown path>';
-      try { path = file?.path || file?.leafName || path; } catch (_) {}
-      this.log(`Skipping filesystem entry during ${operation}: ${path}: ${e}`);
-      return fallback;
+      this.log(`Filesystem entry raised during ${operation}: ${this.safePath(file)}: ${e}`);
+      return null;
     }
   },
 
-  addJob(file, collection, jobs) {
+  addJob(file, collection, jobs, stats) {
     let path = '';
-    try { path = file.path; } catch (_) { return; }
+    try { path = file.path; } catch (_) {
+      stats.unreadableEntries++;
+      return;
+    }
     const key = this.canonicalPath(path);
     if (!key || this.jobPathSet.has(key)) return;
     this.jobPathSet.add(key);
     jobs.push({ file, collection });
+    stats.files++;
+    if (collection?.id != null) stats.collectionsUsed.add(collection.id);
   },
 
-  async collect(file, parentCollection, jobs, isRoot) {
-    if (this.cancelRequested) return;
+  // Reads one directory into a plain array. Critically, the nsIDirectoryEnumerator
+  // is opened, drained and closed synchronously. Holding one open across an
+  // `await` - and creating a collection does hit the database - is what used to
+  // make enumeration abort mid-folder and silently drop the remaining files.
+  readDirectoryOnce(dir) {
+    const children = [];
+    let entries = null;
 
-    // Broken junctions, cloud placeholders, or files disappearing during the
-    // scan must never abort the rest of the import.
-    if (!this.safeFileCall(file, 'exists')) return;
-
-    if (this.safeFileCall(file, 'isFile')) {
-      if (this.allowed(file)) this.addJob(file, parentCollection, jobs);
-      return;
-    }
-
-    if (!this.safeFileCall(file, 'isDirectory')) return;
-    if (this.defaults.skipHidden && this.safeFileCall(file, 'isHidden', false)) return;
-
-    let collection = parentCollection;
-    if (!isRoot || this.defaults.createRootCollection) {
-      collection = await this.getOrCreateChildCollection(parentCollection, file.leafName);
-    }
-
-    let entries;
     try {
-      entries = file.directoryEntries;
+      entries = dir.directoryEntries;
     } catch (e) {
-      let path = '<unknown path>';
-      try { path = file.path || file.leafName || path; } catch (_) {}
-      this.log(`Could not enumerate directory; skipping it: ${path}: ${e}`);
-      return;
+      return { children, opened: false, partial: false, unreadableEntries: 0, error: e };
     }
 
-    while (true) {
-      if (this.cancelRequested) break;
-      let hasMore = false;
-      try {
-        hasMore = entries.hasMoreElements();
-      } catch (e) {
-        this.log(`Directory enumeration stopped: ${e}`);
-        break;
-      }
-      if (!hasMore) break;
+    let partial = false;
+    let unreadableEntries = 0;
+    let error = null;
 
-      let child;
-      try {
-        child = entries.getNext().QueryInterface(Ci.nsIFile);
-      } catch (e) {
-        this.log(`Could not read a directory entry; skipping it: ${e}`);
+    try {
+      while (true) {
+        let hasMore = false;
+        try {
+          hasMore = entries.hasMoreElements();
+        } catch (e) {
+          partial = true;
+          error = e;
+          break;
+        }
+        if (!hasMore) break;
+
+        let child = null;
+        try {
+          child = entries.getNext().QueryInterface(Ci.nsIFile);
+        } catch (e) {
+          // Some Gecko builds expose only the newer nsIDirectoryEnumerator getter.
+          try { child = entries.nextFile; } catch (_) { child = null; }
+          if (!child) {
+            unreadableEntries++;
+            error = e;
+            // The enumerator can no longer be advanced reliably. Stop instead of
+            // spinning forever on the same broken entry.
+            partial = true;
+            break;
+          }
+        }
+        children.push(child);
+      }
+    } finally {
+      try { entries.close?.(); } catch (_) {}
+    }
+
+    return { children, opened: true, partial, unreadableEntries, error };
+  },
+
+  // A partial read is retried once from scratch and the results merged by
+  // canonical path, so a transient failure does not quietly shrink the import.
+  readDirectorySnapshot(dir, stats) {
+    const first = this.readDirectoryOnce(dir);
+    if (!first.opened) {
+      stats.unreadableDirs++;
+      this.noteProblem(stats, `Could not open folder: ${this.safePath(dir)}: ${first.error}`);
+      return null;
+    }
+
+    if (!first.partial && !first.unreadableEntries) return first.children;
+
+    const second = this.readDirectoryOnce(dir);
+    const merged = new Map();
+    for (const child of [...first.children, ...second.children]) {
+      const key = this.canonicalPath(this.safePath(child));
+      if (key && !merged.has(key)) merged.set(key, child);
+    }
+
+    if (first.partial && second.partial) {
+      stats.partialDirs++;
+      this.noteProblem(
+        stats,
+        `Folder read incompletely after retry (${merged.size} entries recovered): ` +
+        `${this.safePath(dir)}: ${second.error || first.error}`
+      );
+    } else {
+      this.log(`Recovered a partial folder read on retry: ${this.safePath(dir)}`);
+    }
+
+    stats.unreadableEntries += Math.min(first.unreadableEntries, second.unreadableEntries);
+    return [...merged.values()];
+  },
+
+  // Iterative walk. The previous recursive version was bounded only by the tree
+  // itself, so a directory junction pointing at an ancestor could recurse until
+  // the stack blew up and took the whole import down with it.
+  async collectAll(roots, parentCollection, jobs, stats, win) {
+    const stack = [];
+    for (let i = roots.length - 1; i >= 0; i--) {
+      stack.push({ file: roots[i], collection: parentCollection, isRoot: true, depth: 0 });
+    }
+
+    const visitedDirs = new Set();
+    let lastTick = 0;
+
+    while (stack.length) {
+      if (this.cancelRequested) return;
+
+      const task = stack.pop();
+      const file = task.file;
+
+      const exists = this.safeFileCall(file, 'exists');
+      if (exists === null) {
+        stats.unreadableEntries++;
+        this.noteProblem(stats, `Unreadable entry (skipped): ${this.safePath(file)}`);
+        continue;
+      }
+      if (!exists) continue;
+
+      const isFile = this.safeFileCall(file, 'isFile');
+      if (isFile === null) {
+        stats.unreadableEntries++;
+        this.noteProblem(stats, `Could not classify entry (skipped): ${this.safePath(file)}`);
         continue;
       }
 
-      try {
-        await this.collect(child, collection, jobs, false);
-      } catch (e) {
-        let path = '<unknown path>';
-        try { path = child?.path || child?.leafName || path; } catch (_) {}
-        this.log(`Could not scan child entry; skipping it: ${path}: ${e}`);
-        Zotero.logError(e);
+      if (isFile) {
+        if (this.allowed(file)) {
+          this.addJob(file, task.collection, jobs, stats);
+        } else {
+          const ext = this.extensionOf(file);
+          stats.ignored++;
+          stats.ignoredExtensions.set(ext, (stats.ignoredExtensions.get(ext) || 0) + 1);
+        }
+        continue;
+      }
+
+      if (this.safeFileCall(file, 'isDirectory') !== true) continue;
+
+      if (this.defaults.skipHidden && this.safeFileCall(file, 'isHidden', false) === true) {
+        stats.hiddenSkipped++;
+        this.log(`Skipped hidden folder: ${this.safePath(file)}`);
+        continue;
+      }
+
+      if (task.depth > this.limits.maxDepth) {
+        stats.depthLimited++;
+        this.noteProblem(stats, `Folder deeper than ${this.limits.maxDepth} levels (skipped): ${this.safePath(file)}`);
+        continue;
+      }
+
+      const dirKey = this.canonicalPath(this.safePath(file));
+      if (dirKey) {
+        if (visitedDirs.has(dirKey)) {
+          stats.loopGuards++;
+          this.log(`Already visited, not re-scanning: ${dirKey}`);
+          continue;
+        }
+        visitedDirs.add(dirKey);
+      }
+
+      // Snapshot before any await, then create the collection.
+      const children = this.readDirectorySnapshot(file, stats);
+      if (children === null) continue;
+
+      let collection = task.collection;
+      if (!task.isRoot || this.defaults.createRootCollection) {
+        try {
+          collection = await this.getOrCreateChildCollection(task.collection, file.leafName, stats);
+        } catch (e) {
+          this.noteProblem(stats, `Could not create collection for ${this.safePath(file)}: ${e}`);
+          Zotero.logError(e);
+          continue;
+        }
+      }
+
+      const now = Date.now();
+      if (now - lastTick >= this.limits.statusThrottleMs) {
+        lastTick = now;
+        this.showStatus(
+          win,
+          `Folder Drop Importer\nScanning... ${jobs.length} file(s) found\n${file.leafName}`,
+          0,
+          { cancellable: true }
+        );
+      }
+
+      for (let i = children.length - 1; i >= 0; i--) {
+        stack.push({ file: children[i], collection, isRoot: false, depth: task.depth + 1 });
       }
     }
   },
 
   collectionCacheKey(parent, name) {
-    return `${parent.libraryID}:${parent.id}:${String(name || '').trim().toLocaleLowerCase()}`;
+    return `${parent.libraryID}:${parent.id}:${String(name || '')}`;
   },
 
-  async getOrCreateChildCollection(parent, name) {
-    const key = this.collectionCacheKey(parent, name);
+  async getOrCreateChildCollection(parent, name, stats) {
+    const wanted = String(name || '').trim();
+    const key = this.collectionCacheKey(parent, wanted);
     const cached = this.collectionCache.get(key);
     if (cached) return cached;
 
     let existing = null;
     try {
-      existing = (parent.getChildCollections?.() || []).find(
-        collection => String(collection.name || '').trim().toLocaleLowerCase()
-          === String(name || '').trim().toLocaleLowerCase()
-      );
+      const siblings = parent.getChildCollections?.() || [];
+      // Exact match first. Matching case-insensitively outright merged sibling
+      // folders that differ only in case on case-sensitive filesystems.
+      existing = siblings.find(collection => String(collection.name || '').trim() === wanted)
+        || siblings.find(
+          collection => String(collection.name || '').trim().toLocaleLowerCase()
+            === wanted.toLocaleLowerCase()
+        );
     } catch (e) {
       this.log(`Could not inspect child collections under ${parent.id}: ${e}`);
     }
@@ -920,10 +1244,11 @@ ZoteroFolderDropImporter = {
 
     const collection = new Zotero.Collection();
     collection.libraryID = parent.libraryID;
-    collection.name = name;
+    collection.name = wanted;
     collection.parentID = parent.id;
     await collection.saveTx();
     this.collectionCache.set(key, collection);
+    if (stats) stats.collectionsCreated++;
     return collection;
   },
 
@@ -932,7 +1257,8 @@ ZoteroFolderDropImporter = {
 
     try {
       const targetName = file.leafName.toLowerCase();
-      const targetSize = file.fileSize;
+      let targetSize = -1;
+      try { targetSize = file.fileSize; } catch (_) {}
 
       for (const item of collection.getChildItems?.() || []) {
         if (!item.isAttachment?.()) continue;
@@ -942,9 +1268,19 @@ ZoteroFolderDropImporter = {
         if (this.defaults.duplicateMode === 'name') return true;
 
         const existingPath = await item.getFilePathAsync?.();
-        if (!existingPath) return true;
+        if (!existingPath) {
+          // name-size mode cannot confirm a match without the stored file
+          // (linked attachment, or a synced file not downloaded yet). Importing
+          // a possible twin is recoverable; silently dropping a new file is not.
+          this.log(`Duplicate check inconclusive, importing anyway: ${this.safePath(file)}`);
+          continue;
+        }
+
         const existing = this.fileFromPath(existingPath);
-        if (existing?.exists() && existing.fileSize === targetSize) return true;
+        if (this.safeFileCall(existing, 'exists') !== true) continue;
+        let existingSize = -2;
+        try { existingSize = existing.fileSize; } catch (_) {}
+        if (existingSize >= 0 && targetSize >= 0 && existingSize === targetSize) return true;
       }
     } catch (e) {
       this.log(`Duplicate check warning: ${e}`);
