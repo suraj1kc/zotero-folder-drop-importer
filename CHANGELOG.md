@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented here.
 
+## [1.1.1] - 2026-08-26
+
+Production hardening of the 1.1.0 import engine. No behavior change for a
+successful import; both fixes matter on large libraries and unusual Zotero builds.
+
+### Fixed
+- **Duplicate detection was quadratic.** `isDuplicate` called
+  `collection.getChildItems()` once per file, rebuilding the collection's item
+  array for every single import. Attachment filenames are now indexed once per
+  collection per import and kept current as items are added: a 2000-file import
+  went from 2000 `getChildItems()` calls to 20 (one per collection).
+- **Enumerator accessor was re-probed per entry.** On a Gecko build without
+  `nsIDirectoryEnumerator.getNext()`, the scanner threw and fell back to
+  `nextFile` for every entry of every directory. The working accessor is now
+  learned once per session.
+
+### Added
+- Test coverage for re-import duplicate handling, the duplicate-index call
+  budget, `nextFile`-only enumeration, and the invariant that every opened
+  enumerator is closed. The suite now runs 11 scenarios.
+- Dependabot for GitHub Actions.
+
 ## [1.1.0] - 2026-08-26
 
 First stable release. The headline change is that imports no longer lose files

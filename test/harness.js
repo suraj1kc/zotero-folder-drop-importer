@@ -1,17 +1,23 @@
 // Test harness: runs src/folder-drop-importer.js against real directories under a
 // stubbed Zotero/Gecko environment. Faults (enumeration failures, unreadable
 // entries, junction loops, transient import errors) are injected via `opts`.
-// Drives src/folder-drop-importer.js under a stubbed Zotero/Gecko environment
-// against real directories on disk.
+//
+// `createSession()` keeps one stubbed library alive across several imports, so
+// duplicate detection and collection reuse can be tested the way a user hits
+// them - by importing the same folder twice.
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+
+const SOURCE = path.join(__dirname, '..', 'src', 'folder-drop-importer.js');
 
 function makeFile(p, opts = {}) {
   const hidden = new Set(opts.hidden || []);
   const failEnum = opts.failEnum || new Map(); // canonical dir -> {afterN, times}
   const links = opts.links || new Map();       // canonical dir -> real target
-  const raise = new Set(opts.raise || []);     // paths whose stat() throws
+  const raise = new Set(opts.raise || []);     // paths whose exists() throws
+  const nextFileOnly = !!opts.nextFileOnly;    // Gecko build without getNext()
+  const counters = opts.counters || {};
 
   function wrap(fp) {
     const norm = path.resolve(fp);
@@ -27,12 +33,11 @@ function makeFile(p, opts = {}) {
       isDirectory() { return fs.statSync(norm).isDirectory(); },
       isHidden() { return hidden.has(norm); },
       get directoryEntries() {
+        counters.enumeratorsOpened = (counters.enumeratorsOpened || 0) + 1;
         const target = links.get(norm) || norm;
         const names = fs.readdirSync(target);
         let i = 0;
-        let closed = false;
-        const key = norm;
-        const fail = failEnum.get(key);
+        const fail = failEnum.get(norm);
         return {
           hasMoreElements() {
             if (fail && fail.times > 0 && i === fail.afterN) {
@@ -42,10 +47,15 @@ function makeFile(p, opts = {}) {
             return i < names.length;
           },
           getNext() {
+            if (nextFileOnly) throw new Error('getNext is not available on this build');
             const child = wrap(path.join(target, names[i++]));
             return { QueryInterface: () => child };
           },
-          close() { closed = true; }
+          get nextFile() {
+            if (i >= names.length) return null;
+            return wrap(path.join(target, names[i++]));
+          },
+          close() { counters.enumeratorsClosed = (counters.enumeratorsClosed || 0) + 1; }
         };
       }
     };
@@ -53,33 +63,36 @@ function makeFile(p, opts = {}) {
   return wrap(p);
 }
 
-function run(rootDir, opts = {}) {
+function createSession() {
   const imported = [];
   const collections = new Map();
+  const counters = { getChildItems: 0, enumeratorsOpened: 0, enumeratorsClosed: 0 };
   let nextId = 100;
 
   function makeCollection(name, parentID, libraryID) {
     const id = nextId++;
-    const c = {
+    return {
       id, name, parentID, libraryID,
       _children: [], _items: [],
       getChildCollections() { return this._children; },
-      getChildItems() { return this._items; },
+      getChildItems() {
+        counters.getChildItems++;
+        return this._items;
+      },
       async saveTx() {
-        collections.set(id, this);
-        if (parentID != null && collections.has(parentID)) {
-          collections.get(parentID)._children.push(this);
-        }
+        collections.set(this.id, this);
+        const parent = collections.get(this.parentID);
+        if (parent && !parent._children.includes(this)) parent._children.push(this);
       }
     };
-    return c;
   }
 
-  const rootCollection = makeCollection('Target', null, 1);
-  collections.set(rootCollection.id, rootCollection);
+  const target = makeCollection('Target', null, 1);
+  collections.set(target.id, target);
 
   const sandbox = {
-    console, Date, Math, JSON, Map, Set, WeakMap, WeakSet, Array, Object, String, Number, Error,
+    console, Date, Math, JSON, Map, Set, WeakMap, WeakSet,
+    Array, Object, String, Number, Error, Promise,
     Components: {
       classes: {
         '@mozilla.org/file/local;1': {
@@ -97,24 +110,16 @@ function run(rootDir, opts = {}) {
     Services: { appinfo: { OS: process.platform === 'win32' ? 'WINNT' : 'Linux' } },
     Zotero: {
       _log: [],
-      debug(m) { this._log.push(m); },
+      debug(m) { this._log.push(String(m)); },
       logError() {},
       getMainWindow() { return null; },
       getMainWindows() { return []; },
-      Collection: function () {
-        const c = makeCollection(null, null, null);
-        return new Proxy(c, {
-          set(t, k, v) {
-            t[k] = v;
-            if (k === 'parentID') t.parentID = v;
-            return true;
-          }
-        });
-      },
+      Collection: function () { return makeCollection(null, null, null); },
       Attachments: {
-        async importFromFile({ file, collections: cols, libraryID, title }) {
-          if (opts.failOnce && opts.failOnce.has(path.basename(file))) {
-            opts.failOnce.delete(path.basename(file));
+        async importFromFile({ file, collections: cols }) {
+          const base = path.basename(file);
+          if (sandbox.__failOnce && sandbox.__failOnce.has(base)) {
+            sandbox.__failOnce.delete(base);
             throw new Error('simulated transient import failure');
           }
           imported.push(file);
@@ -122,7 +127,7 @@ function run(rootDir, opts = {}) {
             id: nextId++,
             _cols: [...cols],
             isAttachment: () => true,
-            attachmentFilename: path.basename(file),
+            attachmentFilename: base,
             async getFilePathAsync() { return file; },
             getCollections() { return this._cols; },
             addToCollection(id) { this._cols.push(id); },
@@ -136,22 +141,39 @@ function run(rootDir, opts = {}) {
   };
   sandbox.globalThis = sandbox;
 
-  const code = fs.readFileSync(path.join(__dirname, '..', 'src', 'folder-drop-importer.js'), 'utf8');
   vm.createContext(sandbox);
-  vm.runInContext(code, sandbox);
+  vm.runInContext(fs.readFileSync(SOURCE, 'utf8'), sandbox);
 
   const plugin = sandbox.ZoteroFolderDropImporter;
   plugin.rootURI = '';
-  const captured = [];
-  plugin.showStatus = (win, msg) => captured.push(String(msg));
+  const messages = [];
+  plugin.showStatus = (win, msg) => messages.push(String(msg));
 
-  const rootFile = makeFile(rootDir, opts);
-  return plugin.importRoots(null, [rootFile], rootCollection).then(() => ({
-    imported,
-    summary: captured[captured.length - 1],
-    log: sandbox.Zotero._log,
-    collections: [...collections.values()].map(c => c.name)
-  }));
+  async function importFolder(dir, opts = {}) {
+    const before = imported.length;
+    sandbox.__failOnce = opts.failOnce || null;
+    counters.getChildItems = 0;
+    messages.length = 0;
+
+    const root = makeFile(dir, { ...opts, counters });
+    await plugin.importRoots(null, [root], target);
+
+    return {
+      imported: imported.slice(before),
+      importedTotal: imported.length,
+      summary: messages[messages.length - 1],
+      log: sandbox.Zotero._log,
+      counters: { ...counters },
+      collectionNames: [...collections.values()].map(c => c.name)
+    };
+  }
+
+  return { importFolder, plugin, collections, target };
 }
 
-module.exports = { run, makeFile };
+// Single-import convenience wrapper.
+function run(dir, opts = {}) {
+  return createSession().importFolder(dir, opts);
+}
+
+module.exports = { run, createSession, makeFile };

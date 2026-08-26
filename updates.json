@@ -3,8 +3,8 @@
     "zotero-folder-drop-importer@open-source": {
       "updates": [
         {
-          "version": "1.1.0",
-          "update_link": "https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0/Zotero-Folder-Drop-Importer-1.1.0.xpi",
+          "version": "1.1.1",
+          "update_link": "https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.1/Zotero-Folder-Drop-Importer-1.1.1.xpi",
           "applications": {
             "zotero": {
               "strict_min_version": "8.0",
