@@ -2,6 +2,12 @@
  * Zotero Folder Drop Importer
  * Lightweight, explicit folder-hierarchy importer for Zotero 8-10.
  *
+ * 1.1.1:
+ * - Indexes existing attachment filenames once per collection instead of
+ *   calling getChildItems() for every file (duplicate detection was quadratic).
+ * - Learns which nsIDirectoryEnumerator accessor works once per session instead
+ *   of re-probing getNext() on every directory entry.
+ *
  * 1.1.0:
  * - Fixes silently dropped files: directory enumeration no longer holds an
  *   nsIDirectoryEnumerator open across `await`, and a partial read is retried
@@ -50,6 +56,8 @@ ZoteroFolderDropImporter = {
   fileMenuID: null,
   collectionCache: new Map(),
   jobPathSet: new Set(),
+  duplicateIndex: new Map(),
+  enumeratorAccessor: null,
   cancelRequested: false,
   manuallyHiddenStatus: new WeakSet(),
 
@@ -775,6 +783,7 @@ ZoteroFolderDropImporter = {
     this.manuallyHiddenStatus.delete(win);
     this.collectionCache = new Map();
     this.jobPathSet = new Set();
+    this.duplicateIndex = new Map();
 
     const stats = this.newStats();
     stats.targetCollectionID = parentCollection?.id ?? null;
@@ -867,6 +876,7 @@ ZoteroFolderDropImporter = {
       this.cancelRequested = false;
       this.collectionCache.clear();
       this.jobPathSet.clear();
+      this.duplicateIndex.clear();
     }
   },
 
@@ -908,6 +918,7 @@ ZoteroFolderDropImporter = {
         this.noteProblem(stats, `Could not verify collection membership for ${this.safePath(job.file)}: ${e}`);
       }
 
+      this.rememberImported(job.collection, item, job.file);
       stats.imported++;
       return 'ok';
     } catch (e) {
@@ -1056,20 +1067,38 @@ ZoteroFolderDropImporter = {
         if (!hasMore) break;
 
         let child = null;
-        try {
-          child = entries.getNext().QueryInterface(Ci.nsIFile);
-        } catch (e) {
-          // Some Gecko builds expose only the newer nsIDirectoryEnumerator getter.
-          try { child = entries.nextFile; } catch (_) { child = null; }
-          if (!child) {
-            unreadableEntries++;
-            error = e;
-            // The enumerator can no longer be advanced reliably. Stop instead of
-            // spinning forever on the same broken entry.
-            partial = true;
-            break;
+        let thrown = null;
+
+        // Some Gecko builds expose only the newer nsIDirectoryEnumerator
+        // getter. Learn which accessor works once rather than throwing on
+        // every single entry of every directory.
+        if (this.enumeratorAccessor !== 'nextFile') {
+          try {
+            child = entries.getNext().QueryInterface(Ci.nsIFile);
+            this.enumeratorAccessor = 'getNext';
+          } catch (e) {
+            thrown = e;
           }
         }
+
+        if (!child) {
+          try {
+            child = entries.nextFile;
+            if (child && this.enumeratorAccessor !== 'getNext') {
+              this.enumeratorAccessor = 'nextFile';
+            }
+          } catch (_) {}
+        }
+
+        if (!child) {
+          unreadableEntries++;
+          error = thrown || error;
+          // The enumerator can no longer be advanced reliably. Stop instead of
+          // spinning forever on the same broken entry.
+          partial = true;
+          break;
+        }
+
         children.push(child);
       }
     } finally {
@@ -1252,6 +1281,50 @@ ZoteroFolderDropImporter = {
     return collection;
   },
 
+  // Attachment filenames already in a collection, indexed once per collection
+  // per import. Calling getChildItems() for every single file made a large
+  // import quadratic in (files x existing items).
+  duplicateIndexFor(collection) {
+    const id = collection?.id;
+    if (id == null) return new Map();
+
+    const cached = this.duplicateIndex.get(id);
+    if (cached) return cached;
+
+    const index = new Map();
+    try {
+      for (const item of collection.getChildItems?.() || []) {
+        if (!item.isAttachment?.()) continue;
+        const name = (item.attachmentFilename || '').toLowerCase();
+        if (!name) continue;
+        const bucket = index.get(name);
+        if (bucket) bucket.push(item);
+        else index.set(name, [item]);
+      }
+    } catch (e) {
+      this.log(`Could not index existing attachments in collection ${id}: ${e}`);
+    }
+
+    this.duplicateIndex.set(id, index);
+    return index;
+  },
+
+  rememberImported(collection, item, file) {
+    const index = this.duplicateIndex.get(collection?.id);
+    if (!index) return;
+
+    let name = '';
+    try { name = (item.attachmentFilename || '').toLowerCase(); } catch (_) {}
+    if (!name) {
+      try { name = (file.leafName || '').toLowerCase(); } catch (_) {}
+    }
+    if (!name) return;
+
+    const bucket = index.get(name);
+    if (bucket) bucket.push(item);
+    else index.set(name, [item]);
+  },
+
   async isDuplicate(file, collection) {
     if (this.defaults.duplicateMode === 'off') return false;
 
@@ -1260,11 +1333,7 @@ ZoteroFolderDropImporter = {
       let targetSize = -1;
       try { targetSize = file.fileSize; } catch (_) {}
 
-      for (const item of collection.getChildItems?.() || []) {
-        if (!item.isAttachment?.()) continue;
-        const filename = (item.attachmentFilename || '').toLowerCase();
-        if (filename !== targetName) continue;
-
+      for (const item of this.duplicateIndexFor(collection).get(targetName) || []) {
         if (this.defaults.duplicateMode === 'name') return true;
 
         const existingPath = await item.getFilePathAsync?.();

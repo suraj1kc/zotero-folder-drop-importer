@@ -7,7 +7,7 @@
 
 Import entire folder hierarchies into Zotero collections - preserving your directory structure as nested collections and importing your documents in one step.
 
-> **Status:** `1.1.0` (stable) - as always, keep a backup of your Zotero library before a large import.
+> **Status:** `1.1.1` (stable) - as always, keep a backup of your Zotero library before a large import.
 >
 > 📖 **Blog Post:** [Building Zotero Folder Drop Importer](https://surajkatwal.com.np/blog/building-zotero-folder-drop-importer/) - Read about the motivation, design decisions, and how it was built.
 
@@ -17,7 +17,7 @@ Import entire folder hierarchies into Zotero collections - preserving your direc
 
 ### Step 1 - Download the plugin file
 
-> **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.0.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0/Zotero-Folder-Drop-Importer-1.1.0.xpi)**
+> **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.1.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.1/Zotero-Folder-Drop-Importer-1.1.1.xpi)**
 
 This downloads a small `.xpi` file (≈14 KB). Save it somewhere you can find it (e.g. your Downloads folder).
 

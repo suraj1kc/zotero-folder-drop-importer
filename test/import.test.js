@@ -1,7 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { run } = require('./harness');
+const { run, createSession } = require('./harness');
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -94,6 +94,53 @@ function tree() {
     const r = await run(base, { hidden: [path.resolve(base, '2022')] });
     check('32 imported', r.imported.length === 32, `got ${r.imported.length}`);
     check('hidden folder reported', /hidden folder/.test(r.summary), r.summary);
+  }
+
+  console.log('\n8. re-importing the same folder skips duplicates, not files');
+  {
+    const base = tree();
+    const s = createSession();
+    const first = await s.importFolder(base);
+    check('first pass imports 42', first.imported.length === 42, `got ${first.imported.length}`);
+
+    const second = await s.importFolder(base);
+    check('second pass imports 0', second.imported.length === 0, `got ${second.imported.length}`);
+    check('second pass reports 42 duplicates', /Duplicates: 42/.test(second.summary), second.summary);
+    check('no new collections created', !/Collections created/.test(second.summary), second.summary);
+    check('subcollection tip still shown on reuse', /Show Items from Subcollections/.test(second.summary), second.summary);
+  }
+
+  console.log('\n9. duplicate index is built once per collection, not once per file');
+  {
+    const base = tree();
+    const s = createSession();
+    await s.importFolder(base);
+    const second = await s.importFolder(base);
+    // Five collections hold files: root, 2021, 2022, 2023, 2023/nested.
+    check(
+      'getChildItems called at most once per collection',
+      second.counters.getChildItems <= 6,
+      `called ${second.counters.getChildItems} times for 42 files`
+    );
+  }
+
+  console.log('\n10. Gecko build without getNext() still enumerates');
+  {
+    const base = tree();
+    const r = await run(base, { nextFileOnly: true });
+    check('all 42 imported via nextFile', r.imported.length === 42, `got ${r.imported.length}`);
+    check('no partial-read warning', !/read partially/.test(r.summary), r.summary);
+  }
+
+  console.log('\n11. every enumerator opened is closed');
+  {
+    const base = tree();
+    const r = await run(base);
+    check(
+      'opened === closed',
+      r.counters.enumeratorsOpened === r.counters.enumeratorsClosed,
+      `opened ${r.counters.enumeratorsOpened}, closed ${r.counters.enumeratorsClosed}`
+    );
   }
 
   console.log(failures ? `\n${failures} FAILURE(S)\n` : '\nALL PASS\n');
