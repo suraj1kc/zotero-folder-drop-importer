@@ -19,7 +19,7 @@ Import entire folder hierarchies into Zotero collections - preserving your direc
 
 > **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.0.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0/Zotero-Folder-Drop-Importer-1.1.0.xpi)**
 
-This downloads a small `.xpi` file (≈10 KB). Save it somewhere you can find it (e.g. your Downloads folder).
+This downloads a small `.xpi` file (≈14 KB). Save it somewhere you can find it (e.g. your Downloads folder).
 
 > **⚠️ Important - Firefox users:** Firefox will try to install the `.xpi` as a browser extension. **Right-click** the link above and choose **"Save Link As…"** instead.
 >
