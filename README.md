@@ -5,9 +5,9 @@
 [![Zotero](https://img.shields.io/badge/Zotero-8%20-%2010-red?logo=zotero)](https://www.zotero.org/)
 [![License](https://img.shields.io/github/license/suraj1kc/zotero-folder-drop-importer)](LICENSE)
 
-Import entire folder hierarchies into Zotero collections - preserving your directory structure as nested collections and importing PDFs in one step.
+Import entire folder hierarchies into Zotero collections - preserving your directory structure as nested collections and importing your documents in one step.
 
-> **Status:** `1.1.0-alpha.3` - test with copies of your files before using on a large library.
+> **Status:** `1.1.0` (stable) - as always, keep a backup of your Zotero library before a large import.
 >
 > 📖 **Blog Post:** [Building Zotero Folder Drop Importer](https://surajkatwal.com.np/blog/building-zotero-folder-drop-importer/) - Read about the motivation, design decisions, and how it was built.
 
@@ -17,7 +17,7 @@ Import entire folder hierarchies into Zotero collections - preserving your direc
 
 ### Step 1 - Download the plugin file
 
-> **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.0-alpha.3.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0-alpha.3/Zotero-Folder-Drop-Importer-1.1.0-alpha.3.xpi)**
+> **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.0.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.0/Zotero-Folder-Drop-Importer-1.1.0.xpi)**
 
 This downloads a small `.xpi` file (≈10 KB). Save it somewhere you can find it (e.g. your Downloads folder).
 
@@ -63,7 +63,9 @@ My Library
         └── paper-c
 ```
 
-Your folder structure is preserved as nested Zotero collections, and every PDF is imported as an attachment item.
+Your folder structure is preserved as nested Zotero collections, and every supported document is imported as an attachment item.
+
+> **💡 If imported files look missing:** items inside subfolders go into *subcollections*, and Zotero's item list does not show them when the parent collection is selected. Turn on **View → Show Items from Subcollections**, or select **My Library**, to see everything. The import summary reminds you of this whenever subcollections were created.
 
 ---
 
@@ -93,16 +95,18 @@ While an import is running, the progress panel shows **Stop** and **×** control
 
 ## ⚙️ Opinionated Defaults
 
-There is intentionally **no Settings dialog** in this alpha. The plugin does one job with safe defaults:
+There is intentionally **no Settings dialog**. The plugin does one job with safe defaults:
 
 | Setting | Default |
 | :--- | :--- |
-| File types | PDFs only |
+| File types | `pdf`, `epub`, `djvu`, `mobi`, `azw3`, `doc`, `docx`, `odt`, `rtf` |
 | Hierarchy | Preserve folder structure as nested collections |
 | Hidden files | Skipped |
-| Inaccessible entries | Skipped (import continues) |
+| Inaccessible entries | Skipped and reported (import continues) |
 | Duplicate detection | Filename + file size |
-| Existing collections | Reuse same-named child collections |
+| Existing collections | Reuse same-named child collections (exact case preferred) |
+| Failed imports | Retried once |
+| Folder link loops | Detected and skipped (64-level depth cap) |
 | Source files | Never moved or deleted (copy only) |
 | Background watcher | None |
 | Telemetry | None |
@@ -112,12 +116,12 @@ There is intentionally **no Settings dialog** in this alpha. The plugin does one
 
 ## 🛡️ Multi-Folder Drop Protection
 
-`1.1.0-alpha.3` includes safeguards to prevent duplicate collection trees when dropping multiple folders:
+Safeguards that prevent duplicate collection trees when dropping multiple folders:
 
 - Prefers privileged Gecko top-level drag objects when available
 - Canonicalizes paths before processing
 - Removes nested roots when a parent root is already present
-- Deduplicates PDF jobs by full source path
+- Deduplicates import jobs by full source path
 - One-drop / one-import locking
 - Caches collections created/reused during each import
 
@@ -137,11 +141,34 @@ Zotero plugins have broad access to Zotero and the local computer - install rele
 
 ---
 
-## ⚠️ Known Alpha Limitations
+## 🧾 Trustworthy Import Counts
+
+Every file the scanner touches is accounted for in exactly one bucket, and the
+final summary shows all of them:
+
+```text
+Folder Drop Importer complete
+Found: 42 · Imported: 41 · Duplicates: 1 · Failed: 0
+Collections created: 4
+Files in subfolders go to subcollections - enable View -> Show Items from Subcollections to see them all.
+Ignored 2 unsupported file(s): 1x .txt, 1x .csv
+1 unreadable entry/entries (cloud placeholder or permissions)
+Details: Help -> Debug Output Logging -> View Output
+```
+
+If a folder cannot be read completely, the plugin says so instead of quietly
+reporting a smaller total as a success. For a full per-path breakdown, enable
+**Help → Debug Output Logging → View Output** and search for
+`Zotero Folder Drop Importer`.
+
+---
+
+## ⚠️ Known Limitations
 
 - Drag-and-drop uses the currently selected collection; dropping directly onto a specific collection row is planned.
-- Duplicate detection uses filename + size, not content-hash (SHA-256 planned for beta).
-- JavaScript codebase - a modular TypeScript refactor is planned before stable release.
+- Duplicate detection uses filename + size, not content-hash (SHA-256 planned).
+- JavaScript codebase - a modular TypeScript refactor is planned.
+- Files stored as cloud placeholders (OneDrive/Dropbox "online-only") may not be readable. Make the folder available offline before importing; any that cannot be read are reported in the summary.
 
 ---
 

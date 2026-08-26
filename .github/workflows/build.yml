@@ -18,6 +18,8 @@ jobs:
           python-version: '3.12'
       - name: Syntax check
         run: npm run check
+      - name: Import engine tests
+        run: npm test
       - name: Build XPI
         run: npm run build
       - uses: actions/upload-artifact@v4
