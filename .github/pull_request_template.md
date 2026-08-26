@@ -5,11 +5,14 @@
 ## Testing
 
 - [ ] `npm run check`
+- [ ] `npm test`
 - [ ] `npm run build`
 - [ ] Right-click import tested
-- [ ] Tools-menu import tested
+- [ ] File-menu import tested
+- [ ] Drag-and-drop import tested
 - [ ] Nested folders tested if relevant
 - [ ] Missing/inaccessible entry tested if relevant
+- [ ] Import summary totals match the files on disk
 
 ## File safety
 

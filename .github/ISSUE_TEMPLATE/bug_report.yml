@@ -13,7 +13,7 @@ body:
     id: plugin
     attributes:
       label: Plugin version
-      placeholder: 1.1.0-alpha.1
+      placeholder: 1.1.0
     validations:
       required: true
   - type: input
@@ -42,7 +42,7 @@ body:
       label: Import method
       options:
         - Right-click Import Folder Here
-        - Tools menu
+        - File menu (Import Folder)
         - Drag and drop
     validations:
       required: true
@@ -67,8 +67,15 @@ body:
       label: Actual behavior
     validations:
       required: true
+  - type: input
+    id: summary
+    attributes:
+      label: Import summary shown by the plugin
+      description: The full text of the final progress panel, including any "Ignored", "unreadable" or "read partially" lines.
+      placeholder: "Folder Drop Importer complete / Found: 40 - Imported: 34 ..."
   - type: textarea
     id: logs
     attributes:
-      label: Zotero Error Console output
+      label: Debug output
+      description: Enable Help -> Debug Output Logging -> View Output, run the import, then paste the lines containing "Zotero Folder Drop Importer". This is more useful than the Error Console for import problems.
       render: text
