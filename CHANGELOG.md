@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented here.
 
+## [1.2.0] - 2026-09-21
+
+Adds the two things the first round of user reports asked for: more file types,
+and an import mode that does not copy.
+
+### Added
+- **Linked-file import mode.** Files can now be attached where they already
+  live instead of being copied into Zotero storage, for people whose folder
+  tree on disk is the library they actually maintain. Three ways in:
+  **File -> Import Folder as Linked Files…**, the matching
+  **Import Folder Here as Linked Files…** on a collection right-click, and
+  holding **Shift** (or **Alt**) while dropping a folder. The mode is named in
+  the progress panel and again in the summary, so a run is never ambiguous
+  after the fact. (#10)
+- **Plain-text and markup documents are imported:** `txt`, `md`, `html`, `htm`,
+  alongside the existing PDF, e-book and word-processor formats. (#9)
+- Test coverage for the new file types, linked imports, duplicate detection
+  across two linked runs, and the group-library refusal. The suite now runs 16
+  scenarios.
+
+### Notes
+- Linked imports are refused up front for **group libraries**: Zotero only
+  allows linked files in My Library, and failing before the first write is
+  clearer than failing once per file.
+- Duplicate detection works unchanged in linked mode - re-linking the same
+  folder finds the existing attachments by filename and size rather than
+  creating a second set.
+
 ## [1.1.1] - 2026-08-26
 
 Production hardening of the 1.1.0 import engine. No behavior change for a
