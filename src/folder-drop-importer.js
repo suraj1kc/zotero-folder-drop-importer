@@ -2,6 +2,14 @@
  * Zotero Folder Drop Importer
  * Lightweight, explicit folder-hierarchy importer for Zotero 8-10.
  *
+ * 1.2.0:
+ * - Adds a linked-file import mode: File -> Import Folder as Linked Files…,
+ *   the matching collection right-click action, and Shift/Alt while dropping.
+ *   Linked imports record the original path instead of copying into storage,
+ *   and are refused up front for group libraries, which Zotero does not allow
+ *   to hold linked files.
+ * - Imports plain-text and markup documents too: txt, md, html, htm.
+ *
  * 1.1.1:
  * - Indexes existing attachment filenames once per collection instead of
  *   calling getChildItems() for every file (duplicate detection was quadratic).
@@ -67,7 +75,8 @@ ZoteroFolderDropImporter = {
     extensions: [
       'pdf',
       'epub', 'djvu', 'mobi', 'azw3',
-      'doc', 'docx', 'odt', 'rtf'
+      'doc', 'docx', 'odt', 'rtf',
+      'txt', 'md', 'html', 'htm'
     ],
     createRootCollection: true,
     skipHidden: true,
@@ -292,10 +301,16 @@ ZoteroFolderDropImporter = {
             l10nID: 'zfdi-import-folder',
             // Intentionally no icon in the File menu.
             onCommand: (event) => {
-              const win = event?.target?.ownerGlobal
-                || event?.currentTarget?.ownerGlobal
-                || Zotero.getMainWindow?.();
+              const win = this.windowFromEvent(event);
               this.runCommand(win, () => this.pickAndImportFolder(win));
+            }
+          },
+          {
+            menuType: 'menuitem',
+            l10nID: 'zfdi-import-folder-linked',
+            onCommand: (event) => {
+              const win = this.windowFromEvent(event);
+              this.runCommand(win, () => this.pickAndImportFolder(win, null, { linked: true }));
             }
           }
         ]
@@ -361,17 +376,19 @@ ZoteroFolderDropImporter = {
               context.setVisible(collections.length === 1);
             },
             onCommand: (event, context) => {
+              this.runContextImport(event, context, { linked: false });
+            }
+          },
+          {
+            menuType: 'menuitem',
+            l10nID: 'zfdi-import-folder-here-linked',
+            icon: 'chrome://zotero-folder-drop-importer/content/icons/import-folder.svg',
+            onShowing: (_event, context) => {
               const collections = this.getCollectionsFromMenuContext(context);
-              const win = event?.target?.ownerGlobal
-                || event?.currentTarget?.ownerGlobal
-                || Zotero.getMainWindow?.();
-
-              if (collections.length !== 1) {
-                this.showStatus(win, 'Right-click exactly one Zotero collection.');
-                return;
-              }
-
-              this.runCommand(win, () => this.pickAndImportFolder(win, collections[0]));
+              context.setVisible(collections.length === 1);
+            },
+            onCommand: (event, context) => {
+              this.runContextImport(event, context, { linked: true });
             }
           }
         ]
@@ -381,6 +398,24 @@ ZoteroFolderDropImporter = {
       this.log(`Could not register collection context menu: ${e}`);
       this.contextMenuID = null;
     }
+  },
+
+  windowFromEvent(event) {
+    return event?.target?.ownerGlobal
+      || event?.currentTarget?.ownerGlobal
+      || Zotero.getMainWindow?.();
+  },
+
+  runContextImport(event, context, { linked = false } = {}) {
+    const collections = this.getCollectionsFromMenuContext(context);
+    const win = this.windowFromEvent(event);
+
+    if (collections.length !== 1) {
+      this.showStatus(win, 'Right-click exactly one Zotero collection.');
+      return;
+    }
+
+    this.runCommand(win, () => this.pickAndImportFolder(win, collections[0], { linked }));
   },
 
   unregisterCollectionContextMenu() {
@@ -661,7 +696,10 @@ ZoteroFolderDropImporter = {
         return;
       }
 
-      await self.importRoots(win, roots, collection);
+      // Shift mirrors "link instead of copy"; Alt is the Windows shortcut
+      // gesture, and costs nothing to accept alongside it.
+      const linked = !!(event.shiftKey || event.altKey);
+      await self.importRoots(win, roots, collection, { linked });
     } catch (e) {
       Zotero.logError(e);
       self.log(e?.stack || e);
@@ -703,7 +741,7 @@ ZoteroFolderDropImporter = {
     return collections.length === 1 ? collections[0] : null;
   },
 
-  async pickAndImportFolder(win, targetCollection = null) {
+  async pickAndImportFolder(win, targetCollection = null, { linked = false } = {}) {
     // Capture the destination before the native folder picker takes focus.
     const collection = targetCollection || this.getSelectedCollection(win);
     if (!collection) {
@@ -722,9 +760,20 @@ ZoteroFolderDropImporter = {
       return;
     }
 
+    // Checked before the picker opens: choosing a folder and only then being
+    // told the library cannot hold linked files is wasted work.
+    if (linked && !this.supportsLinkedFiles(collection)) {
+      this.showStatus(win, this.linkedUnsupportedMessage(), 9000, { forceShow: true });
+      return;
+    }
+
     const { FilePicker } = ChromeUtils.importESModule('chrome://zotero/content/modules/filePicker.mjs');
     const picker = new FilePicker();
-    picker.init(win, 'Select a folder to import', picker.modeGetFolder);
+    picker.init(
+      win,
+      linked ? 'Select a folder to import as linked files' : 'Select a folder to import',
+      picker.modeGetFolder
+    );
 
     const result = await picker.show();
     if (result !== picker.returnOK || !picker.file) return;
@@ -735,7 +784,7 @@ ZoteroFolderDropImporter = {
       return;
     }
 
-    await this.importRoots(win, [folder], collection);
+    await this.importRoots(win, [folder], collection, { linked });
   },
 
   // Guards against directory junction/symlink loops and pathological trees.
@@ -746,6 +795,9 @@ ZoteroFolderDropImporter = {
 
   newStats() {
     return {
+      // false copies each file into Zotero storage, true records the original
+      // path as a linked-file attachment.
+      linked: false,
       // Scan-time accounting. Every file the scanner touches lands in exactly
       // one bucket, so "found" can be trusted against the folder on disk.
       files: 0,
@@ -777,7 +829,12 @@ ZoteroFolderDropImporter = {
     if (stats.problemPaths.length < 500) stats.problemPaths.push(message);
   },
 
-  async importRoots(win, roots, parentCollection) {
+  async importRoots(win, roots, parentCollection, { linked = false } = {}) {
+    if (linked && !this.supportsLinkedFiles(parentCollection)) {
+      this.showStatus(win, this.linkedUnsupportedMessage(), 9000, { forceShow: true });
+      return;
+    }
+
     this.importing = true;
     this.cancelRequested = false;
     this.manuallyHiddenStatus.delete(win);
@@ -787,12 +844,18 @@ ZoteroFolderDropImporter = {
 
     const stats = this.newStats();
     stats.targetCollectionID = parentCollection?.id ?? null;
+    stats.linked = linked;
     let found = 0;
 
     try {
       const canonicalRoots = this.filterTopLevelRoots(roots);
       const jobs = [];
-      this.showStatus(win, 'Folder Drop Importer\nScanning folder…', 0, { cancellable: true, forceShow: true });
+      this.showStatus(
+        win,
+        `Folder Drop Importer\nScanning folder…${linked ? '\nLinked files: originals stay where they are' : ''}`,
+        0,
+        { cancellable: true, forceShow: true }
+      );
 
       await this.collectAll(canonicalRoots, parentCollection, jobs, stats, win);
       found = jobs.length;
@@ -830,7 +893,7 @@ ZoteroFolderDropImporter = {
           lastTick = now;
           this.showStatus(
             win,
-            `Folder Drop Importer\nImporting ${i + 1} of ${jobs.length}\n${job.file.leafName}`,
+            `Folder Drop Importer\n${linked ? 'Linking' : 'Importing'} ${i + 1} of ${jobs.length}\n${job.file.leafName}`,
             0,
             { cancellable: true }
           );
@@ -892,12 +955,18 @@ ZoteroFolderDropImporter = {
       // Zotero's attachment import is atomic from the plugin's point of view,
       // so Stop takes effect between files rather than interrupting a single
       // file halfway through.
-      const item = await Zotero.Attachments.importFromFile({
+      const payload = {
         file: job.file.path,
         libraryID: job.collection.libraryID,
         collections: [job.collection.id],
         title: job.file.leafName.replace(/\.[^.]+$/, '')
-      });
+      };
+
+      // linkFromFile records the path instead of copying bytes into storage,
+      // so the folder on disk stays the one copy of the file.
+      const item = stats.linked
+        ? await Zotero.Attachments.linkFromFile(payload)
+        : await Zotero.Attachments.importFromFile(payload);
 
       if (!item?.id) {
         this.noteProblem(stats, `Import returned no item: ${this.safePath(job.file)}`);
@@ -933,6 +1002,7 @@ ZoteroFolderDropImporter = {
     lines.push(this.cancelRequested ? 'Folder Drop Importer stopped' : 'Folder Drop Importer complete');
     lines.push(`Found: ${found} · Imported: ${stats.imported} · Duplicates: ${stats.skipped} · Failed: ${stats.failed}`);
 
+    if (stats.linked) lines.push('Linked files: originals were not copied into Zotero storage.');
     if (stats.collectionsCreated) lines.push(`Collections created: ${stats.collectionsCreated}`);
 
     // The most common "my files are missing" report is really this: items live in
@@ -976,7 +1046,7 @@ ZoteroFolderDropImporter = {
 
   logReport(stats, found) {
     this.log(
-      `Report - found:${found} imported:${stats.imported} duplicates:${stats.skipped} ` +
+      `Report - mode:${stats.linked ? 'linked' : 'copy'} found:${found} imported:${stats.imported} duplicates:${stats.skipped} ` +
       `failed:${stats.failed} retried:${stats.retried} ignored:${stats.ignored} ` +
       `collectionsCreated:${stats.collectionsCreated} collectionsUsed:${stats.collectionsUsed.size} ` +
       `collectionRepairs:${stats.collectionRepairs} ` +
@@ -990,6 +1060,34 @@ ZoteroFolderDropImporter = {
   allowed(file) {
     const ext = this.extensionOf(file);
     return !!ext && this.defaults.extensions.includes(ext);
+  },
+
+  // A linked attachment is a path, and a path only means something on the
+  // machine that owns it. Zotero therefore refuses linked files in group
+  // libraries; catching that here turns a per-file exception storm into one
+  // message shown before anything is written.
+  supportsLinkedFiles(collection) {
+    const libraryID = collection?.libraryID;
+    if (typeof libraryID !== 'number') return true;
+
+    try {
+      const userLibraryID = Zotero.Libraries?.userLibraryID;
+      if (typeof userLibraryID === 'number') return libraryID === userLibraryID;
+
+      const type = Zotero.Libraries?.get?.(libraryID)?.libraryType;
+      if (type) return type === 'user';
+    } catch (e) {
+      this.log(`Could not determine the library type for ${libraryID}: ${e}`);
+    }
+
+    // Undeterminable: proceed and let Zotero be the authority.
+    return true;
+  },
+
+  linkedUnsupportedMessage() {
+    return 'Linked files are only supported in My Library.\n'
+      + 'Zotero cannot keep linked files in a group library, so nothing was imported.\n'
+      + 'Use Import Folder… for stored copies instead.';
   },
 
   extensionOf(file) {

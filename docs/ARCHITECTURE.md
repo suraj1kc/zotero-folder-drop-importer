@@ -20,18 +20,20 @@ Main pieces:
 ## Import pipeline
 
 ```text
-roots (drop or picker)
+roots (drop or picker)  + link mode: copy into storage, or link in place
+  -> supportsLinkedFiles     refuse a linked import into a group library
   -> filterTopLevelRoots     drop descendants of an already-present root
   -> collectAll              iterative walk, visited-path guard, depth cap
        -> readDirectorySnapshot   synchronous drain + close, retry-and-merge
        -> getOrCreateChildCollection   only AFTER the snapshot
        -> addJob                  dedupe by canonical path
-  -> importJob per file      duplicate check, importFromFile, verify item
+  -> importJob per file      duplicate check, importFromFile or linkFromFile,
+                             verify item
   -> retry pass              one retry for each failed job
   -> buildSummary            every bucket surfaced to the user
 ```
 
-### Two invariants worth preserving
+### Three invariants worth preserving
 
 **Never hold an `nsIDirectoryEnumerator` open across an `await`.** The enumerator
 wraps an open OS directory handle. The pre-1.1.0 scanner recursed - and created
@@ -40,6 +42,13 @@ failed mid-folder the loop simply broke. Every remaining file in that folder was
 discarded to the debug log, and because `found` was computed from the scan, the
 summary reported the shortened total as a success. `readDirectoryOnce` opens,
 drains and closes the enumerator in one synchronous pass for this reason.
+
+**The link mode is decided once, before anything is written.** `importRoots`
+takes it as an option, records it on `stats`, and `importJob` reads it from
+there - a single run is never half copied and half linked. Group libraries are
+rejected up front by `supportsLinkedFiles` rather than per file, because Zotero
+raises the same error for every file and a hundred identical failures tell the
+user nothing the first one did not.
 
 **Every file lands in exactly one counted bucket.** Imported, duplicate, failed,
 ignored-type, unreadable, hidden, loop-guarded, or depth-limited. A skip that is

@@ -65,6 +65,7 @@ function makeFile(p, opts = {}) {
 
 function createSession() {
   const imported = [];
+  const linked = [];
   const collections = new Map();
   const counters = { getChildItems: 0, enumeratorsOpened: 0, enumeratorsClosed: 0 };
   let nextId = 100;
@@ -90,6 +91,29 @@ function createSession() {
   const target = makeCollection('Target', null, 1);
   collections.set(target.id, target);
 
+  function attach({ file, collections: cols }, mode) {
+    const base = path.basename(file);
+    if (sandbox.__failOnce && sandbox.__failOnce.has(base)) {
+      sandbox.__failOnce.delete(base);
+      throw new Error('simulated transient import failure');
+    }
+
+    (mode === 'linked' ? linked : imported).push(file);
+    const item = {
+      id: nextId++,
+      _cols: [...cols],
+      _linkMode: mode,
+      isAttachment: () => true,
+      attachmentFilename: base,
+      async getFilePathAsync() { return file; },
+      getCollections() { return this._cols; },
+      addToCollection(id) { this._cols.push(id); },
+      async saveTx() {}
+    };
+    for (const cid of cols) collections.get(cid)?._items.push(item);
+    return item;
+  }
+
   const sandbox = {
     console, Date, Math, JSON, Map, Set, WeakMap, WeakSet,
     Array, Object, String, Number, Error, Promise,
@@ -109,6 +133,10 @@ function createSession() {
     },
     Services: { appinfo: { OS: process.platform === 'win32' ? 'WINNT' : 'Linux' } },
     Zotero: {
+      Libraries: {
+        userLibraryID: 1,
+        get(id) { return { libraryID: id, libraryType: id === 1 ? 'user' : 'group' }; }
+      },
       _log: [],
       debug(m) { this._log.push(String(m)); },
       logError() {},
@@ -116,25 +144,13 @@ function createSession() {
       getMainWindows() { return []; },
       Collection: function () { return makeCollection(null, null, null); },
       Attachments: {
-        async importFromFile({ file, collections: cols }) {
-          const base = path.basename(file);
-          if (sandbox.__failOnce && sandbox.__failOnce.has(base)) {
-            sandbox.__failOnce.delete(base);
-            throw new Error('simulated transient import failure');
-          }
-          imported.push(file);
-          const item = {
-            id: nextId++,
-            _cols: [...cols],
-            isAttachment: () => true,
-            attachmentFilename: base,
-            async getFilePathAsync() { return file; },
-            getCollections() { return this._cols; },
-            addToCollection(id) { this._cols.push(id); },
-            async saveTx() {}
-          };
-          for (const cid of cols) collections.get(cid)?._items.push(item);
-          return item;
+        async importFromFile(options) {
+          return attach(options, 'imported');
+        },
+        // Mirrors importFromFile, but the item keeps pointing at the original
+        // path instead of a copy under storage/.
+        async linkFromFile(options) {
+          return attach(options, 'linked');
         }
       }
     }
@@ -151,15 +167,18 @@ function createSession() {
 
   async function importFolder(dir, opts = {}) {
     const before = imported.length;
+    const linkedBefore = linked.length;
     sandbox.__failOnce = opts.failOnce || null;
     counters.getChildItems = 0;
     messages.length = 0;
 
     const root = makeFile(dir, { ...opts, counters });
-    await plugin.importRoots(null, [root], target);
+    const destination = opts.collection || target;
+    await plugin.importRoots(null, [root], destination, { linked: !!opts.linked });
 
     return {
       imported: imported.slice(before),
+      linked: linked.slice(linkedBefore),
       importedTotal: imported.length,
       summary: messages[messages.length - 1],
       log: sandbox.Zotero._log,
@@ -168,7 +187,14 @@ function createSession() {
     };
   }
 
-  return { importFolder, plugin, collections, target };
+  // A collection in a group library, where Zotero forbids linked files.
+  function groupCollection() {
+    const c = makeCollection('Group Target', null, 2);
+    collections.set(c.id, c);
+    return c;
+  }
+
+  return { importFolder, plugin, collections, target, groupCollection };
 }
 
 // Single-import convenience wrapper.

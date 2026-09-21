@@ -87,6 +87,22 @@ Right-click any collection or subcollection and choose:
 
 Select a Zotero collection, then drag one or more folders from your file manager onto Zotero. The plugin handles deduplication, nested roots, and prevents double-imports automatically.
 
+### Copy or Link?
+
+By default every file is **copied into Zotero storage**, which is what most people want: Zotero owns the file and can sync it.
+
+If you already keep an organised folder tree on disk and do not want a second copy of everything, import as **linked files** instead. Zotero then records the path and reads the file where it is.
+
+| Where | Copy into Zotero | Link to the original |
+| :--- | :--- | :--- |
+| File menu | **Import Folder…** | **Import Folder as Linked Files…** |
+| Right-click a collection | **Import Folder Here…** | **Import Folder Here as Linked Files…** |
+| Drag and drop | drop the folder | hold **Shift** (or **Alt**) while dropping |
+
+The progress panel and the final summary both name the mode, so you can always tell which one a run used.
+
+> **⚠️ Two things to know about linked files:** they only work in **My Library** (Zotero does not allow linked files in group libraries, and the plugin says so before importing anything rather than failing file by file), and **Zotero will not sync the file contents** - only the path. Moving or deleting the original folder afterwards breaks the attachment.
+
 ### Stop an Import
 
 While an import is running, the progress panel shows **Stop** and **×** controls. **Stop** safely halts before the next file. **×** hides the panel while the import continues. Partial results are kept when stopped.
@@ -99,7 +115,7 @@ There is intentionally **no Settings dialog**. The plugin does one job with safe
 
 | Setting | Default |
 | :--- | :--- |
-| File types | `pdf`, `epub`, `djvu`, `mobi`, `azw3`, `doc`, `docx`, `odt`, `rtf` |
+| File types | `pdf`, `epub`, `djvu`, `mobi`, `azw3`, `doc`, `docx`, `odt`, `rtf`, `txt`, `md`, `html`, `htm` |
 | Hierarchy | Preserve folder structure as nested collections |
 | Hidden files | Skipped |
 | Inaccessible entries | Skipped and reported (import continues) |
@@ -107,7 +123,8 @@ There is intentionally **no Settings dialog**. The plugin does one job with safe
 | Existing collections | Reuse same-named child collections (exact case preferred) |
 | Failed imports | Retried once |
 | Folder link loops | Detected and skipped (64-level depth cap) |
-| Source files | Never moved or deleted (copy only) |
+| Attachment mode | Stored copy, or linked file on request (see below) |
+| Source files | Never moved or deleted |
 | Background watcher | None |
 | Telemetry | None |
 | Auto-metadata retrieval | None (use Zotero's built-in retrieval after import) |
