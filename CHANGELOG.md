@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented here.
 
+## [1.2.1] - 2026-10-08
+
+### Fixed
+- Internal Zotero attachment drags now reach Zotero's native handlers, including
+  dropping an orphaned PDF onto a reference to make it a child attachment.
+- Individual external file drops also retain Zotero's native behavior. The
+  plugin only intercepts external drops containing a confirmed folder.
+- Disabling the plugin removes its rendered menu entries and document Fluent
+  resource before unregistering chrome resources, avoiding stale localization
+  resources that can interfere with native context menus.
+
+### Tests
+- Added regression coverage for internal and external drag routing, folder
+  drops, and cleanup/re-enable across multiple windows.
+
 ## [1.2.0] - 2026-09-21
 
 Adds the two things the first round of user reports asked for: more file types,

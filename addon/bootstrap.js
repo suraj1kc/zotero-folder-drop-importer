@@ -21,7 +21,6 @@ async function startup({ id, version, rootURI }) {
 }
 
 function onMainWindowLoad({ window }) {
-  try { window.MozXULElement?.insertFTLIfNeeded?.('zotero-folder-drop-importer.ftl'); } catch (_) {}
   ZoteroFolderDropImporter?.addToWindow(window);
 }
 

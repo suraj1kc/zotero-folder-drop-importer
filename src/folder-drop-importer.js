@@ -2,6 +2,10 @@
  * Zotero Folder Drop Importer
  * Lightweight, explicit folder-hierarchy importer for Zotero 8-10.
  *
+ * 1.2.1:
+ * - Leaves internal Zotero drags and individual file drops to Zotero.
+ * - Removes menu elements and Fluent resources before plugin shutdown.
+ *
  * 1.2.0:
  * - Adds a linked-file import mode: File -> Import Folder as Linked Files…,
  *   the matching collection right-click action, and Shift/Alt while dropping.
@@ -442,12 +446,28 @@ ZoteroFolderDropImporter = {
     for (const id of ['zfdi-style', 'zfdi-status', 'zfdi-highlight']) {
       win.document.getElementById(id)?.remove();
     }
+
+    // unregisterMenu removes the registration, but can leave rendered menu
+    // elements behind. Remove our elements before their Fluent resource goes
+    // away, without touching Zotero's or other plugins' menu items.
+    for (const el of win.document.querySelectorAll('[data-l10n-id^="zfdi-"]')) {
+      el.remove();
+    }
+    // insertFTLIfNeeded registers this resource with the whole document.
+    // Leaving it behind after chromeHandle.destruct() makes future native
+    // menu localization try to load a resource from a disabled plugin.
+    for (const el of win.document.querySelectorAll(
+      'link[rel="localization"][href="zotero-folder-drop-importer.ftl"]'
+    )) {
+      el.remove();
+    }
+    win.document.l10n?.removeResourceIds?.(['zotero-folder-drop-importer.ftl']);
   },
 
   removeFromAllWindows() {
-    for (const win of [...this.windows]) this.removeFromWindow(win);
     this.unregisterCollectionContextMenu();
     this.unregisterFileMenu();
+    for (const win of [...this.windows]) this.removeFromWindow(win);
   },
 
   isExternalFileDrag(event) {
@@ -456,6 +476,10 @@ ZoteroFolderDropImporter = {
 
     try {
       const types = Array.from(dt.types || []);
+      // Zotero attachments advertise file flavors too, so those alone do not
+      // identify a drag from the OS. Never take over Zotero's own item moves.
+      if (types.some(type => String(type).startsWith('zotero/'))) return false;
+      if (dt.mozSourceNode) return false;
       if (types.includes('Files') || types.includes('application/x-moz-file')) return true;
     } catch (_) {}
 
@@ -466,9 +490,21 @@ ZoteroFolderDropImporter = {
     return false;
   },
 
+  getFolderDragRoots(event) {
+    if (!this.isExternalFileDrag(event)) return [];
+    const roots = this.getDroppedRoots(event);
+    // Only consume a drop once we can positively identify a directory. Plain
+    // PDFs, URLs and unreadable payloads must reach Zotero's native handlers.
+    return roots.some(file => this.safeFileCall(file, 'isDirectory') === true)
+      ? roots : [];
+  },
+
   onDragOver(event) {
     const self = ZoteroFolderDropImporter;
-    if (!self.isExternalFileDrag(event)) return;
+    if (!self.getFolderDragRoots(event).length) {
+      self.onDragLeave(event);
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
@@ -650,13 +686,14 @@ ZoteroFolderDropImporter = {
 
   async onDrop(event) {
     const self = ZoteroFolderDropImporter;
-    if (!self.isExternalFileDrag(event)) return;
-    event.preventDefault();
-    event.stopPropagation();
-
     const win = event.view || event.currentTarget || Zotero.getMainWindow?.();
     const highlight = win?.document?.getElementById('zfdi-highlight');
     if (highlight) highlight.style.display = 'none';
+
+    const roots = self.getFolderDragRoots(event);
+    if (!roots.length) return;
+    event.preventDefault();
+    event.stopPropagation();
 
     if (self.handlingDrop || self.importing) {
       self.showStatus(win, 'An import is already running. Please wait.');
@@ -665,16 +702,6 @@ ZoteroFolderDropImporter = {
 
     self.handlingDrop = true;
     try {
-      const roots = self.getDroppedRoots(event);
-      if (!roots.length) {
-        self.showStatus(
-          win,
-          'The dropped folder path could not be read on this Zotero build.\nUse File → Import Folder… instead.',
-          8000
-        );
-        return;
-      }
-
       const signature = self.dropSignature(roots);
       const now = Date.now();
       if (signature && signature === self.lastDropSignature && now - self.lastDropAt < 3000) {

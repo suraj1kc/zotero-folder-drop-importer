@@ -1,4 +1,4 @@
-# Test Matrix - 1.2.0
+# Test Matrix - 1.2.1
 
 ## Automated
 
@@ -16,6 +16,12 @@ reported in the summary. The later scenarios cover the linked-file mode: that a
 linked run writes no copies, that re-linking the same folder is recognised as
 duplicates rather than doubled, and that a linked import into a group library is
 refused before anything is written.
+
+`test/ui.test.js` checks drag routing and window cleanup with a simulated
+Zotero window: internal attachment/collection drags and individual files pass
+through, external folder drops still work, and disable/re-enable removes the
+plugin's menu elements, drag listeners and Fluent resources in every window.
+The native Zotero checks below still require manual verification.
 
 ## Manual
 
@@ -49,6 +55,12 @@ Use copies of files. Keep a backup of your Zotero library before a large import.
 
 ## Multi-folder drag/drop
 
+- [ ] Drag an orphaned PDF within Zotero onto a reference → becomes a child
+- [ ] Drag an external PDF onto a reference → native attachment import works
+- [ ] Open item and collection context menus, disable the plugin, then right-click
+      items and collections again → native menus open without restarting Zotero
+- [ ] Re-enable, then disable again → native menus and item drags keep working
+- [ ] Repeat disable/re-enable with two main windows open
 - [ ] Drag 2 folders → exactly 2 root collections are created/reused
 - [ ] Drag 5 folders → exactly 5 root collections are created/reused, not 10
 - [ ] Nested subfolders are not also treated as top-level roots

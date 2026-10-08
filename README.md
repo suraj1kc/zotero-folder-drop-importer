@@ -7,7 +7,7 @@
 
 Import entire folder hierarchies into Zotero collections - preserving your directory structure as nested collections and importing your documents in one step.
 
-> **Status:** `1.1.1` (stable) - as always, keep a backup of your Zotero library before a large import.
+> **Status:** `1.2.1` (stable) - as always, keep a backup of your Zotero library before a large import.
 >
 > 📖 **Blog Post:** [Building Zotero Folder Drop Importer](https://surajkatwal.com.np/blog/building-zotero-folder-drop-importer/) - Read about the motivation, design decisions, and how it was built.
 
@@ -17,9 +17,9 @@ Import entire folder hierarchies into Zotero collections - preserving your direc
 
 ### Step 1 - Download the plugin file
 
-> **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.1.1.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.1.1/Zotero-Folder-Drop-Importer-1.1.1.xpi)**
+> **[⬇️ Click here to download Zotero-Folder-Drop-Importer-1.2.1.xpi](https://github.com/suraj1kc/zotero-folder-drop-importer/releases/download/v1.2.1/Zotero-Folder-Drop-Importer-1.2.1.xpi)**
 
-This downloads a small `.xpi` file (≈14 KB). Save it somewhere you can find it (e.g. your Downloads folder).
+This downloads a small `.xpi` file. Save it somewhere you can find it (e.g. your Downloads folder).
 
 > **⚠️ Important - Firefox users:** Firefox will try to install the `.xpi` as a browser extension. **Right-click** the link above and choose **"Save Link As…"** instead.
 >
@@ -35,6 +35,12 @@ This downloads a small `.xpi` file (≈14 KB). Save it somewhere you can find it
 6. Restart Zotero if prompted.
 
 **That's it!** The plugin is now installed. No configuration needed.
+
+Version **1.2.1** fixes interference with dragging attachments within Zotero and
+cleans up menu localization when the plugin is disabled. Folder drops are handled
+by the plugin; individual file drops and internal item moves use Zotero's native
+behavior. If upgrading after encountering the context-menu issue, restart Zotero
+once to clear resources left by the older version.
 
 ---
 

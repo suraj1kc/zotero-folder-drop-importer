@@ -125,6 +125,8 @@ function createSession() {
             initWithPath(p) { this._p = p; },
             get path() { return this._p; },
             exists() { return fs.existsSync(this._p); },
+            isDirectory() { return fs.statSync(this._p).isDirectory(); },
+            isFile() { return fs.statSync(this._p).isFile(); },
             get fileSize() { return fs.statSync(this._p).size; }
           })
         }
